@@ -92,7 +92,7 @@ def post_multipart(url, files):
         return exc.code, json.loads(exc.read().decode())
 
 
-with tempfile.TemporaryDirectory(prefix="hr_attendance_int03_") as folder:
+with tempfile.TemporaryDirectory(prefix="hr_attendance_int03_", ignore_cleanup_errors=True) as folder:
     folder = Path(folder)
     os.environ["EXCEL_APP_DATA_DIR"] = str(folder / "data")
 

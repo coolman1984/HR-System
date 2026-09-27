@@ -18,13 +18,12 @@ Standard library only.
 import hashlib
 import json
 import os
-import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone  # noqa: F401
 
 from .canonical import canonical
-from .journal import open_journal
+from .journal import SharedConnection, open_journal
 
 
 ORG_TYPES = ("company", "site", "business_unit", "department", "section")
@@ -69,8 +68,7 @@ class Registry:
         self.journal_path = self.journal.path
         self.jdb = self.journal.db
         self.lock = threading.RLock()
-        self.db = sqlite3.connect(self.path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        self.db = SharedConnection(self.path, self.lock)
         self._schema()
         self.recover()
         # Only when there is no company yet: a second opener that does not know the code (the publisher) must not

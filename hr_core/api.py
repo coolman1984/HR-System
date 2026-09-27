@@ -10,7 +10,9 @@ Standard library only.
 """
 
 import json
+import os
 import re
+import traceback
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -188,11 +190,19 @@ def make_handler(service):
                 self._send(404 if exc.code.endswith("not_found") else 400, {"error": exc.code, "message": str(exc)})
             except BackupError as exc:
                 self._send(400, {"error": "backup", "message": str(exc)})
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError) as exc:
+                try:  # usually a malformed request; recorded with its place so a server-side bug shows up too
+                    where = traceback.extract_tb(exc.__traceback__)[-1]
+                    service.journal.audit("system", "request.unreadable", "-", {"error": type(exc).__name__, "path": url.path,
+                                          "where": f"{os.path.basename(where.filename)}:{where.lineno}"}, self.ip)
+                except Exception:
+                    pass
                 self._send(400, {"error": "bad_request", "message": "the request could not be read"})
             except Exception as exc:
                 try:
-                    service.journal.audit("system", "server.error", "-", {"error": type(exc).__name__, "path": url.path}, self.ip)
+                    where = traceback.extract_tb(exc.__traceback__)[-1]  # file and line only: an exception text may hold data
+                    service.journal.audit("system", "server.error", "-", {"error": type(exc).__name__, "path": url.path,
+                                          "where": f"{os.path.basename(where.filename)}:{where.lineno}"}, self.ip)
                 except Exception:
                     pass
                 self._send(500, {"error": "server", "message": "internal error (recorded in the audit log)"})

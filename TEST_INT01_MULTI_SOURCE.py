@@ -65,7 +65,7 @@ def write_leave(path, rows):
     )
 
 
-with tempfile.TemporaryDirectory(prefix="hr_attendance_int01_") as folder:
+with tempfile.TemporaryDirectory(prefix="hr_attendance_int01_", ignore_cleanup_errors=True) as folder:
     folder = Path(folder)
     data_dir = folder / "data"
     os.environ["EXCEL_APP_DATA_DIR"] = str(data_dir)

@@ -1,3 +1,5 @@
+> **HISTORICAL (2026-09-05, attendance foundation).** This document describes the Excel attendance stage and is kept as the record of that stage. It is no longer the current picture: read `STATUS.md` and `AGENT_HANDOFF.md`. Still valid: the attendance rules of the locked engine.
+
 # خريطة البرنامج
 
 ## الاستئناف السريع

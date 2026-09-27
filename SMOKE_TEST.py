@@ -12,7 +12,8 @@ parser.add_argument("--file", default=os.environ.get("SMOKE_FILE", ""), help="al
 args = parser.parse_args()
 
 
-with tempfile.TemporaryDirectory(prefix="hr_attendance_smoke_") as folder:
+# the locked engine leaves its history.db open until the process ends; Windows cannot delete an open file
+with tempfile.TemporaryDirectory(prefix="hr_attendance_smoke_", ignore_cleanup_errors=True) as folder:
     test_dir = Path(folder)
     os.environ["EXCEL_APP_DATA_DIR"] = str(test_dir / "data")
     os.environ["EXCEL_APP_PROJECT"] = str(ROOT / "PROJECT.json")

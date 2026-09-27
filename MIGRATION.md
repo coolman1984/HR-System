@@ -110,7 +110,7 @@ not active → `person.inactive`) when `ownership.person = 'hr'`. With `'none'` 
 - Contract to add when HR computes payroll: `hr.payroll_period.v1` (📐 not built).
 
 ## 9. Remaining gaps and next safest step
-- HR does not yet keep an employee master of its own: employees exist as enrichment of attendance rows. Next: an
+- *(Superseded 2026-09-27: done in phase 1, see below; current state in `STATUS.md`.)* HR does not yet keep an employee master of its own: employees exist as enrichment of attendance rows. Next: an
   explicit ADR + test to import `EMP_01_EmployeeMaster` as its own entity (then every employee is published, not
   only those with attendance), plus departments/positions (`eco.org_unit.v1`).
 - Fix quirk 1 (§5) behind a test that first reproduces it.

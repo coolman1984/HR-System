@@ -11,8 +11,23 @@ keep read-only mirrors and reference employees by the shared id `UUIDv5(company,
 BAMS (`Mr.Ayman-HR`) is a different product; it is the ecosystem's infrastructure REFERENCE, never modified from here.
 Design and plan: `docs/HR_SYSTEM_DESIGN.md`.
 
-Read first: `START_HERE_AI.md` (the original working rules, still valid), `MIGRATION.md`, then
-`project_memory/PROJECT_LOG.md`.
+Read first: `AGENT_HANDOFF.md` (where we are, why, what is next), `STATUS.md` (built / partially built / planned /
+design only, checked against the code), the top of `HISTORY.md` and `docs/LESSONS.md`; the working map is the skill
+`.claude/skills/hr-development/SKILL.md`. Background: `MIGRATION.md`, `project_memory/PROJECT_LOG.md`,
+`START_HERE_AI.md` (its 2026-09-05 rules are kept as history).
+
+## Continuity documents (a new agent session must be able to resume in minutes)
+- `STATUS.md` — the current stage and its finish line; every capability under exactly one label: **Built and tested**,
+  **Partially built** (say what is missing), **Planned**, **Design only**; the architecture inventory block.
+- `AGENT_HANDOFF.md` — where we are, why, what must not break, the next step, how to prove it, open decisions.
+- `HISTORY.md` — newest first; every bug or discovery as Symptom / Cause / Fix / Lesson, in the same commit.
+- `docs/LESSONS.md` — durable lessons; `.claude/skills/hr-development/SKILL.md` — file map and recipes.
+- **Every long or structural session ends by updating `STATUS.md`, `AGENT_HANDOFF.md`, `HISTORY.md` and
+  `docs/LESSONS.md` before pushing.** `TEST_DOCS_CURRENT.py` fails when the inventory in `STATUS.md` no longer matches
+  the code (kernel files, entrances, tests, contracts, entities, permissions, routes, commands, module statuses,
+  planted bugs, phase plan), when `STATUS.md` and `AGENT_HANDOFF.md` disagree, or when an old claim returns. Fix the
+  documents, never the expectation alone.
+- An outdated document is marked HISTORICAL at its top with a pointer to `STATUS.md`; it is not deleted.
 
 ## Never
 - Change behaviour during migration or "clean-up". Behaviour changes need a decision in PROJECT_LOG.md and a test
@@ -47,6 +62,7 @@ python TEST_MIGRATION_EQUIVALENCE.py
 python TEST_ECO_PUBLISHER.py
 python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py         phase-2 exit gate (HR_REQUIRE_CROSSCHECK=1 with `cryptography` installed: CI does)
+python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py
 ```

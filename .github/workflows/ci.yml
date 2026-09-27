@@ -28,6 +28,7 @@ jobs:
       - run: python TEST_ECO_PUBLISHER.py
       - run: python TEST_HR_REGISTRY.py
       - run: python TEST_HR_SECURITY.py
+      - run: python TEST_DOCS_CURRENT.py
       - run: python migration/mutations.py
       - run: python BUILD_PROJECT.py
   signing-crosscheck:
