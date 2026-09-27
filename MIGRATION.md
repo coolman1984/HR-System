@@ -121,8 +121,12 @@ not active → `person.inactive`) when `ownership.person = 'hr'`. With `'none'` 
   labour module; HR work-center codes ↔ GMES station codes ↔ 3D `meta["eco.ref"]`.
 
 **Done 2026-09-27 (phase 1 of docs/HR_SYSTEM_DESIGN.md):** HR now has its own employee registry and organisation in
-`hr_core/` (beside the locked engine), and the publisher takes employees from it. **Next safest step:** users,
-permissions, device identity and verified backups (phase 2), before any new domain module.
+`hr_core/` (beside the locked engine), and the publisher takes employees from it.
+
+**Done 2026-09-27 (phase 2):** users, profiles and server-side permissions, device identity, the signed journal and
+audit, verified automatic backups with a restore rehearsal, compensating restore and lost-file recovery —
+`docs/HR_SECURITY.md`, exit gate `TEST_HR_SECURITY.py`. **Next:** phase 3 (shifts, rosters and assignments
+independent of attendance).
 
 ## 10. Safety fix made during migration
 The source `.gitignore` did not exclude `data/`. A real installation keeps `data/last_result.json` (the current

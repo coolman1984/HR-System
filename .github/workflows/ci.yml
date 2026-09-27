@@ -27,5 +27,27 @@ jobs:
       - run: python TEST_MIGRATION_EQUIVALENCE.py
       - run: python TEST_ECO_PUBLISHER.py
       - run: python TEST_HR_REGISTRY.py
+      - run: python TEST_HR_SECURITY.py
       - run: python migration/mutations.py
       - run: python BUILD_PROJECT.py
+  signing-crosscheck:
+    # ADR-HR-002: the standard library (cryptography) and BAMS's vendored fallback must agree, both directions.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONPATH: vendor.zip
+      PYTHONIOENCODING: utf-8
+      HR_REQUIRE_CROSSCHECK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cryptography
+      - run: python TEST_HR_SECURITY.py
+      - run: python TEST_HR_SECURITY.py
+        env:
+          HR_SIGNING_BACKEND: bams
