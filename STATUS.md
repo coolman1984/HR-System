@@ -18,9 +18,9 @@ restore; a restart loses nothing; an update over an installed version keeps data
 and a power cut in the middle of an update are survived; every HR test and planted bug; GMES's real HR end-to-end
 test against the new commit.
 
-**Where it stands:** everything above is built and passes on Linux (`TEST_HR_DELIVERY.py`, 74 checks) and, for the
-installed program, in the CI job `windows-installer` (`tools/installed_acceptance.py`: Python hidden from the
-program, outbound network blocked). Still owed before the gate closes: the owner's clean-PC run in Windows Sandbox
+**Where it stands:** everything above is built and passes on Linux and Windows (`TEST_HR_DELIVERY.py`, 74 checks) and,
+for the installed program, in the CI job `windows-installer` (`tools/installed_acceptance.py`, 31 of 31: Python hidden
+from the program, outbound network blocked). Still owed before the gate closes: the owner's clean-PC run in Windows Sandbox
 (`installer/clean-pc-test.wsb`, `docs/HR_DELIVERY.md` §5), because the CI machine has Python installed.
 
 ## Built and tested
@@ -112,8 +112,11 @@ python BUILD_PROJECT.py
 On Windows (CI job `windows-installer`): `python tools/build_windows.py`, then `python tools/installed_acceptance.py`.
 Then, in a GMES checkout: `sh scripts/fetch-hr.sh`, `ECO_E2E_REQUIRED=1 npm test`, `node scripts/mutations.mjs`.
 
-**Last full run (2026-09-27, phase 2.5):** every test above passes on Linux; 59 of 59 planted bugs caught; GMES against
-this repository: 15 + 29 + 10 tests pass, every GMES planted bug caught. The Windows installer job: see the pull request.
+**Last full run (2026-09-27, phase 2.5, commit b3d106d):** every test above passes on Linux and Windows; 59 of 59
+planted bugs caught; the CI job `windows-installer` built `HR-System-Setup-1.0.0.exe` and accepted the installed program
+with Python hidden and the network blocked — 31 of 31 checks (install, rights, setup, register, permissions, attendance,
+bundled `cryptography`, Excel detection, recovery installer, backup/rehearsal/restore, restart, update, failed update,
+power cut, removal keeps the data); GMES against this commit: 15 + 29 + 10 tests pass, every GMES planted bug caught.
 
 ## Architecture inventory (checked by `TEST_DOCS_CURRENT.py`)
 

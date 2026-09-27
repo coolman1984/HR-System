@@ -45,7 +45,7 @@ clean-PC run (Windows Sandbox, `docs/HR_DELIVERY.md` §5).
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
-1. Close phase 2.5: the CI job `windows-installer` green on the pull request, then the owner's clean-PC run in
+1. Close phase 2.5: the CI job `windows-installer` is green (31/31 on b3d106d); still owed: the owner's clean-PC run in
    Windows Sandbox; mark phase 2.5 done in `docs/HR_SYSTEM_DESIGN.md` §7 and move the `phase` line here and in
    `STATUS.md` to 3.
 2. Phase 3 — shifts, calendars, schedules and assignments (model and exit gate in `STATUS.md`). Start with the
