@@ -204,14 +204,26 @@ check("excel_is_detected_not_assumed", excel_installed() is None if os.name != "
 # backups carry the attendance history, never half an upload
 s, made, _ = admin.call("POST", "/api/admin/backups")
 check("a_backup_holds_the_attendance_history", s == 201 and "history.db" in made["manifest"]["files"] and made["rehearsal"]["ok"], made.get("manifest", {}).get("files"))
+# Deterministic, not timed (a timed version passed a planted bug on a slow Windows disk): watch the copies. While an
+# upload holds the attendance lock, the backup copies the journal files but must not copy history.db.
+from hr_core import backup as backup_module  # noqa: E402
+copies, real_copy = [], backup_module._copy_db
+backup_module._copy_db = lambda src, dst: (real_copy(src, dst), copies.append(os.path.basename(dst)))
 finished = []
-with P.attendance.lock:  # an upload is running
-    t = threading.Thread(target=lambda: finished.append(P.service.backups.create("test", "manual")))
-    t.start()
-    t.join(0.5)
-    waited = t.is_alive()
-t.join()
-check("a_backup_waits_for_a_running_upload", waited and finished)
+try:
+    with P.attendance.lock:  # an upload is running
+        t = threading.Thread(target=lambda: finished.append(P.service.backups.create("test", "manual")))
+        t.start()
+        deadline = time.time() + 60
+        while time.time() < deadline and "hr_journal.db" not in copies:
+            time.sleep(0.05)
+        time.sleep(1.0)  # time enough to copy history.db too, if the lock did not stop it
+        copied_during_upload = "history.db" in copies
+    t.join()
+finally:
+    backup_module._copy_db = real_copy
+check("a_backup_waits_for_a_running_upload", "hr_journal.db" in copies and not copied_during_upload
+      and finished and "history.db" in finished[0]["manifest"]["files"], copies)
 
 # a lost attendance history comes back from the newest verified backup, and it is audited. Tried on a copy of the
 # installation in a new process: this process's engine is bound to the original folder and keeps its file open

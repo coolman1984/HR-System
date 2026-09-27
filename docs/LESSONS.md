@@ -31,6 +31,8 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L26** Hash-pinned files need byte-identical checkouts: `.gitattributes` `* -text` (Windows CRLF broke the pin).
 
 - **L27** Look at the screens in a real browser before calling them done (white-on-white buttons passed every API test).
+- **L34** A check that depends on timing measures the machine, not the rule: observe the order of events (a planted
+  bug survived only on a slow Windows disk).
 - **L28** A fixture or repair that writes tables without a journal line is corruption; the rehearsal refuses it, rightly.
 
 ## Delivery (phase 2.5)

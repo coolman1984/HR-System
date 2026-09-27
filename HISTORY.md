@@ -36,6 +36,15 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 - **Lesson:** a reused pattern carries its assumptions: check what the folder holds before copying its rights. And
   "written once" data must be the last thing written, after every other check.
 
+### A timed check let a planted bug through on Windows
+- **Symptom:** in Windows CI the planted bug "the attendance history is copied during an upload" SURVIVED; on Linux it
+  was caught.
+- **Cause:** the check held the attendance lock and asserted the backup was still running after 0.5 s; on a slow disk
+  the backup was still busy anyway, with or without the lock.
+- **Fix:** the check watches which files the backup copies: after the journal files are copied, history.db must not be
+  copied while the upload holds the lock, and must be in the finished backup.
+- **Lesson:** a check that depends on timing measures the machine, not the rule; observe the order of events instead.
+
 ### A backup failed with "the request could not be read"
 - **Symptom:** the first backup through the new server answered 400.
 - **Cause:** the manifest recorded the attendance file's modification time in nanoseconds, larger than the integers
