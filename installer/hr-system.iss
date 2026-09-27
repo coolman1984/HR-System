@@ -199,13 +199,22 @@ end;
 
 procedure LockDownData();
 var
-  Code: Integer;
+  Code1, Code2: Integer;
+  Ok: Boolean;
 begin
-  { no inherited rights (the built-in Users group of ProgramData must not reach HR data); full control for SYSTEM and
-    the Administrators (by SID, any Windows language), change rights for the account that runs the server }
-  if not Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataHome() + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F "' +
-              ServerAccount() + ':(OI)(CI)M" /T /C /Q', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-    MsgBox('The access rights of ' + DataHome() + ' could not be limited (code ' + IntToStr(Code) + '). Ask for help: other users of this ' +
+  Code1 := -1;
+  Code2 := -1;
+  { 1. the folder itself: no inherited rights (the Users group of ProgramData must not reach HR data); full control for
+       SYSTEM and the Administrators (by SID, any Windows language), change rights for the account that runs the
+       server - all inheritable by what is inside;
+    2. everything already inside (made before this step) drops its own rights and inherits the folder's }
+  Ok := Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataHome() + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F "' +
+             ServerAccount() + ':(OI)(CI)M"', '', SW_HIDE, ewWaitUntilTerminated, Code1) and (Code1 = 0);
+  if Ok then
+    Ok := Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataHome() + '\*" /reset /T /C /Q', '', SW_HIDE, ewWaitUntilTerminated, Code2) and (Code2 = 0);
+  Log('LockDownData for ' + ServerAccount() + ': folder code ' + IntToStr(Code1) + ', contents code ' + IntToStr(Code2));
+  if not Ok then
+    MsgBox('The access rights of ' + DataHome() + ' could not be limited. Ask for help: other users of this ' +
            'computer might be able to read HR data.', mbError, MB_OK);
 end;
 

@@ -110,7 +110,11 @@ def login(who, password):
 
 
 def install(setup, *extra):
-    r = run([setup, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=autostart", *extra])
+    log = os.path.join(tempfile.gettempdir(), f"hr-setup-{int(time.time())}.log")
+    r = run([setup, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=autostart", f"/LOG={log}", *extra])
+    if os.path.isfile(log):  # the installer's own account of what it did (rights, copies, recovery)
+        lines = open(log, encoding="utf-8", errors="replace").read().splitlines()
+        print("\n".join(l for l in lines if "LockDownData" in l or "Error" in l or "rror" in l)[-3000:], flush=True)
     return r.returncode == 0
 
 
@@ -151,6 +155,8 @@ def main(setup):
     check("data_folder_is_outside_the_program", os.path.isdir(DATA) and not os.path.exists(os.path.join(PROGRAM, "data")))
     check("old_attendance_history_was_copied_not_moved", os.path.isfile(os.path.join(DATA, "history.db"))
           and hashlib.sha256(open(os.path.join(old, "data", "history.db"), "rb").read()).hexdigest() == old_hash)
+    print(subprocess.run(["icacls", HOME], capture_output=True, text=True).stdout, flush=True)
+    print(subprocess.run(["whoami", "/user"], capture_output=True, text=True).stdout, flush=True)
     pending = os.path.join(HOME, "recovery", "pending", "installer.json")
     check("installer_left_a_copy_for_recovery", os.path.isfile(pending) and json.load(open(pending))["version"] == VERSION)
     startup = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup", "HR-System.lnk")
