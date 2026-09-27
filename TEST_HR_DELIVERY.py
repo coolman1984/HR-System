@@ -184,7 +184,7 @@ check("attendance_rows_are_the_golden_rows", hashlib.sha256(json.dumps(rows, sor
       == golden["_current_rows_sha256"])
 check("an_upload_is_audited_with_its_person", any(a["event"] == "attendance.uploaded" and a["actor"] == "officer1" for a in P.service.journal.audit_entries("activity", 50)))
 s, out, _ = officer.call("POST", "/api/upload?filename=05_Time_Attendance_Leave.xlsx", raw=CLEAN.read_bytes())
-s2, out2, _ = officer.call("POST", "/api/upload?filename=broken.xlsx", raw=b"not a workbook")
+s2, out2, _ = officer.call("POST", "/api/upload?filename=broken.csv", raw=b"\xff\xfe not a table")
 events = [a for a in P.service.journal.audit_entries("activity", 50) if a["event"].startswith("attendance.")]
 check("a_refused_or_duplicate_upload_is_not_recorded_as_a_change", out.get("duplicate_upload") and s2 == 400
       and sum(1 for a in events if a["event"] == "attendance.uploaded") == 1 and sum(1 for a in events if a["event"] == "attendance.refused") == 2,
@@ -200,6 +200,22 @@ s, health, _ = admin.call("GET", "/api/admin/health")
 check("health_shows_version_company_attendance_and_excel", s == 200 and health["product"]["data_version"] == upgrade.DATA_VERSION
       and health["company"]["source"] == "owner" and health["attendance"]["history_file"] and "excel_desktop" in health["attendance"], health.get("product"))
 check("excel_is_detected_not_assumed", excel_installed() is None if os.name != "nt" else isinstance(excel_installed(), bool))
+
+# a PC without Microsoft Excel: a file only Excel could open is refused at once (the engine would wait minutes for
+# Excel, holding the attendance lock - seen in Windows CI); ordinary workbooks still go to the engine unchanged
+import hr_core.attendance as attendance_module  # noqa: E402
+real_excel = attendance_module.excel_installed
+attendance_module.excel_installed = lambda: False
+try:
+    t0 = time.time()
+    s, out, _ = officer.call("POST", "/api/upload?filename=protected.xlsx", raw=b"\xd0\xcf\x11\xe0 an OLE file, not a zip package")
+    s3, out3, _ = officer.call("POST", "/api/upload?filename=old.xls", raw=b"\xd0\xcf\x11\xe0")
+    fast = time.time() - t0 < 30
+    s4, out4, _ = officer.call("POST", "/api/upload?filename=05_Time_Attendance_Leave.xlsx", raw=CLEAN.read_bytes())
+finally:
+    attendance_module.excel_installed = real_excel
+check("without_excel_a_file_only_excel_opens_is_refused_at_once", s == 400 and out["error"] == "attendance.needs_excel" and s3 == 400 and fast, (s, out))
+check("without_excel_an_ordinary_workbook_still_reaches_the_engine", s4 == 200 and out4.get("duplicate_upload"), (s4, out4))
 
 # backups carry the attendance history, never half an upload
 s, made, _ = admin.call("POST", "/api/admin/backups")

@@ -9,6 +9,7 @@
 Standard library only.
 """
 
+import io
 import json
 import os
 import re
@@ -270,6 +271,11 @@ def make_handler(service, product=None):
                 return False
             user = service.session(self.token) if self.token else None
             service.require(user, right, self.ip, f"attendance:{url.path}")
+            if url.path in ("/api/upload", "/api/upload_multi") and self._needs_missing_excel(url):
+                service.journal.audit("activity", "attendance.refused", user["code"], {"path": url.path, "reason": "excel.missing"}, self.ip)
+                from .attendance import WITHOUT_EXCEL
+                self._send(400, {"error": "attendance.needs_excel", "message": WITHOUT_EXCEL})
+                return True
             self.engine_reply = None
             with attendance.lock:  # the locked engine answers its own address, as it always did
                 (attendance.engine.Handler.do_GET if method == "GET" else attendance.engine.Handler.do_POST)(self)
@@ -285,6 +291,24 @@ def make_handler(service, product=None):
                     detail["duplicate"] = bool(reply.get("duplicate_upload"))
                 service.journal.audit("activity", CHANGES[url.path] if done else "attendance.refused", user["code"], detail, self.ip)
             return True
+
+        def _needs_missing_excel(self, url):
+            """Without Microsoft Excel the engine would wait minutes for Excel to open a protected or old-format
+            workbook, holding the attendance lock (seen in Windows CI). Refuse such a file at once; the engine is
+            unchanged and gets the same bytes otherwise."""
+            from .attendance import excel_installed, needs_excel
+            if excel_installed() is not False:
+                return False
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > attendance.engine.MAX_UPLOAD:
+                return False  # the engine refuses these itself, as before
+            body = self.rfile.read(length)
+            self.rfile = io.BytesIO(body)  # the engine reads the same bytes afterwards
+            if url.path == "/api/upload":
+                name = parse_qs(url.query).get("filename", ["upload.xlsx"])[0]
+                return needs_excel(name, body)
+            parts = attendance.engine.parse_multipart(body, self.headers.get("Content-Type", ""))
+            return any(needs_excel(p.get("filename") or "", p.get("content") or b"") for p in parts.values())
 
         def send_json(self, payload, status=200):
             """The engine answers through this (engine.Handler.send_json); remember what it said, for the audit."""

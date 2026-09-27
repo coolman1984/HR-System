@@ -107,6 +107,8 @@ MUTATIONS = [
      "key=_age, reverse=True):  # by time", "reverse=True):  # by time", "TEST_HR_DELIVERY.py"),
     ("a refused attendance upload is audited as a change", "hr_core/api.py",
      'done = status == 200 and "error" not in reply and not reply.get("duplicate_upload")', "done = True", "TEST_HR_DELIVERY.py"),
+    ("a file only Excel can open is handed to the engine on a PC without Excel", "hr_core/api.py",
+     "            if excel_installed() is not False:\n                return False", "            if True:\n                return False", "TEST_HR_DELIVERY.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"shifts": {"depends_on": ["kernel"], "status": "planned"', '"shifts": {"depends_on": ["kernel"], "status": "built"', "TEST_DOCS_CURRENT.py"),

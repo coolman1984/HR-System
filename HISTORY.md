@@ -15,7 +15,7 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
   ADR-HR-006), data versions with a verified pre-update backup, put-back on failure and resume after a power cut, and
   the recovery installer (`hr_core/upgrade.py`, ADR-HR-007), a Windows installer built with Nuitka and Inno Setup and
   accepted in CI with Python hidden and the network blocked (`tools/`, `installer/`, ADR-HR-004). `TEST_HR_DELIVERY.py`
-  (72 checks), 17 planted bugs (58 in total). Decisions: `docs/HR_DELIVERY.md`.
+  (74 checks), 18 planted bugs (59 in total). Decisions: `docs/HR_DELIVERY.md`.
 - **Why:** stage 3.0 found that customers could install none of phases 1-2; the owner put delivery before shifts.
 
 ### Four review findings on the first phase-2.5 pull request (Codex)
@@ -35,6 +35,17 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
   Three new checks and three planted bugs (58).
 - **Lesson:** a reused pattern carries its assumptions: check what the folder holds before copying its rights. And
   "written once" data must be the last thing written, after every other check.
+
+### A broken upload held the attendance screen for minutes on a PC without Excel
+- **Symptom:** in Windows CI an upload of a file that is not a workbook timed out after 120 s; everything else waited
+  behind the attendance lock (uploads, backups).
+- **Cause:** the locked engine hands a workbook it cannot read (protected, damaged, or .xls/.xlsb) to Microsoft Excel
+  through PowerShell and waits up to minutes for Excel; the CI machine, like many customer PCs, has no Excel.
+- **Fix:** before the engine, when Excel is not installed, a file only Excel could open is refused at once with a
+  plain message (`attendance.needs_excel`) and audited; ordinary workbooks and CSV reach the engine with the same bytes.
+  The engine is unchanged. Two checks and a planted bug.
+- **Lesson:** "do not assume Excel" (the owner's rule) is not only a notice: every path that would call it must know
+  it is missing.
 
 ### A timed check let a planted bug through on Windows
 - **Symptom:** in Windows CI the planted bug "the attendance history is copied during an upload" SURVIVED; on Linux it

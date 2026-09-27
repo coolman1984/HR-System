@@ -39,6 +39,24 @@ def excel_installed():
         return False
 
 
+NEEDS_EXCEL = (".xls", ".xlsb")  # binary workbooks: the engine always opens them with Microsoft Excel
+
+
+def needs_excel(filename, content):
+    """Would the engine have to ask Microsoft Excel to open this file? Binary workbooks always; an .xlsx/.xlsm that is
+    not a readable zip package (a protected or damaged workbook) too. CSV and ordinary .xlsx never."""
+    name = (filename or "").lower()
+    if name.endswith(NEEDS_EXCEL):
+        return True
+    if name.endswith((".xlsx", ".xlsm")):
+        return not content.startswith(b"PK\x03\x04")
+    return False
+
+
+WITHOUT_EXCEL = ("This file needs Microsoft Excel to be opened (a protected, damaged or old-format workbook), and Excel is "
+                 "not installed on this computer. Save it as an ordinary .xlsx workbook, or upload it on a computer with Excel.")
+
+
 class Attendance:
     def __init__(self, data_dir):
         self.data_dir = os.path.abspath(data_dir)

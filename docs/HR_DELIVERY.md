@@ -18,7 +18,7 @@ backups (HISTORY.md, 2026-09-27).
 | Start | Start menu and optional desktop icon; "start with Windows" (for the installing person, who runs the server) is offered and ticked by default, and can be switched off in Settings |
 | Entry | One address, one sign-in: `http://127.0.0.1:8766/` — employees and organisation, attendance, users and permissions, backups, system health, settings |
 | Old attendance program | On a first install the installer offers to COPY the old program's `data\history.db` (the old folder stays as it was) |
-| Microsoft Excel | Not assumed: the installer and the health screen say whether it is there; only protected workbooks need it |
+| Microsoft Excel | Not assumed: the installer and the health screen say whether it is there; only protected, damaged or old-format (.xls/.xlsb) workbooks need it, and without Excel such a file is refused at once with a plain message instead of waiting for Excel |
 | Languages | English and Arabic screens (right-to-left); the attendance dashboard itself stays English (locked engine) |
 
 ## 2. Decisions
@@ -80,7 +80,7 @@ backups (HISTORY.md, 2026-09-27).
 ## 3. Tests
 | What | Where |
 |---|---|
-| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages | `TEST_HR_DELIVERY.py` (72 checks) and 17 planted bugs in `migration/mutations.py` |
+| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages | `TEST_HR_DELIVERY.py` (74 checks) and 18 planted bugs in `migration/mutations.py` |
 | The installed program on Windows: no Python visible, outbound network blocked, install with the old attendance history, first administrator, register, permissions, attendance, backup/rehearsal/restore, restart, update over the installed version, failure and power cut in the middle of an update, removal keeps the data | `tools/installed_acceptance.py` in the CI job `windows-installer` |
 
 ## 4. Limits, said plainly
