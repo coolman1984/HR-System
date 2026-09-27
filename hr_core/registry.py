@@ -10,7 +10,7 @@ Design taken from BAMS (the ecosystem's infrastructure reference), re-implemente
 * Optimistic versions (`ver`): saving over a newer version is refused, never silently overwritten.
 * Soft delete + restore: nothing is erased; codes are never reused.
 * Hash chain in the ecosystem's unified format (ADR-026): SHA-256("HR-JOURNAL1\\n" + canonical(line)),
-  every line carries `prev`. The `sig` field is reserved for the device signature (phase 2).
+  every line carries `prev`, and (phase 2) the Ed25519 signature of this installation's device (hr_core/journal.py).
 
 Standard library only.
 """
@@ -21,11 +21,11 @@ import os
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone  # noqa: F401
 
-from .canonical import GENESIS, canonical, line_hash
+from .canonical import canonical
+from .journal import open_journal
 
-DOMAIN = "HR-JOURNAL1"
 
 ORG_TYPES = ("company", "site", "business_unit", "department", "section")
 # Allowed parent type per org unit type. A department directly under the company is accepted only as
@@ -60,32 +60,26 @@ def _now():
 
 
 class Registry:
-    def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company"):
+    def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company", journal=None):
         uuid.UUID(company_id)
         self.company_id = company_id
         os.makedirs(data_dir, exist_ok=True)
         self.path = os.path.join(data_dir, "hr.db")
-        self.journal_path = os.path.join(data_dir, "hr_journal.db")
+        self.journal = journal or open_journal(data_dir)
+        self.journal_path = self.journal.path
+        self.jdb = self.journal.db
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.jdb = sqlite3.connect(self.journal_path, check_same_thread=False)
-        self.jdb.row_factory = sqlite3.Row
         self._schema()
         self.recover()
-        if not self.get("org_unit", company_code, include_deleted=True):
+        # Only when there is no company yet: a second opener that does not know the code (the publisher) must not
+        # create a second "COMPANY" (found in phase 2; see PROJECT_LOG.md).
+        if not self.db.execute("SELECT 1 FROM org_unit WHERE type = 'company'").fetchone():
             self.commit("system", "Company created", [self.op_put("org_unit", company_code, {"type": "company", "name": company_name, "parent_id": None, "attrs": {}})])
 
     # ------------------------------------------------------------------ schema
     def _schema(self):
-        self.jdb.executescript("""
-            PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;
-            CREATE TABLE IF NOT EXISTS journal (
-              seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, at TEXT NOT NULL, actor TEXT NOT NULL, label TEXT NOT NULL,
-              ops TEXT NOT NULL, prev TEXT NOT NULL, hash TEXT NOT NULL, sig TEXT);
-            CREATE TRIGGER IF NOT EXISTS journal_no_update BEFORE UPDATE ON journal BEGIN SELECT RAISE(ABORT, 'hr: the journal is append-only'); END;
-            CREATE TRIGGER IF NOT EXISTS journal_no_delete BEFORE DELETE ON journal BEGIN SELECT RAISE(ABORT, 'hr: the journal is append-only'); END;
-        """)
         parts = ["PRAGMA journal_mode = WAL;", "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"]
         for entity, fields in ENTITIES.items():
             # No declared type: SQLite keeps each value exactly as written (a TEXT column turned 1 into '1'
@@ -280,15 +274,8 @@ class Registry:
                 raise RegistryError(f"{entity}.in_use", f"{entity} {cur['code']} still has {n} {what}; move or remove them first")
 
     # ------------------------------------------------------------------ journal and fold
-    def _append(self, actor, label, results):
-        last = self.jdb.execute("SELECT seq, hash FROM journal ORDER BY seq DESC LIMIT 1").fetchone()
-        seq, prev = (last["seq"] + 1, last["hash"]) if last else (1, GENESIS)
-        line = {"seq": seq, "id": str(uuid.uuid4()), "at": _now(), "actor": actor, "label": label, "ops": results, "prev": prev}
-        h = line_hash(DOMAIN, line)
-        with self.jdb:
-            self.jdb.execute("INSERT INTO journal (seq, id, at, actor, label, ops, prev, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                             (seq, line["id"], line["at"], actor, label, canonical(results), prev, h))
-        return seq
+    def _append(self, actor, label, results, kind="data"):
+        return self.journal.append(actor, label, results, kind)
 
     def _write(self, entity, row):
         cols = ["id", "code"] + [f for f in ENTITIES[entity] if f != "code"] + [c for c in META_COLUMNS if c != "id"]
@@ -302,6 +289,7 @@ class Registry:
                 for r in results:
                     self._write(r["entity"], r["row"])
                 self.db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('applied_seq', ?)", (str(seq),))
+                self.db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('applied_hash', ?)", (self.journal.hash_at(seq),))  # also for lines with no business ops
                 self.db.execute("COMMIT")
             except Exception:
                 self.db.execute("ROLLBACK")
@@ -311,27 +299,80 @@ class Registry:
         row = self.db.execute("SELECT value FROM meta WHERE key = 'applied_seq'").fetchone()
         return int(row[0]) if row else 0
 
+    def applied_hash(self):
+        row = self.db.execute("SELECT value FROM meta WHERE key = 'applied_hash'").fetchone()
+        return row[0] if row else None
+
     def recover(self):
-        """Fold journal lines the business tables have not seen (a crash after the commit point)."""
-        done = self.applied_seq()
-        for line in self.jdb.execute("SELECT seq, ops FROM journal WHERE seq > ? ORDER BY seq", (done,)).fetchall():
-            self._fold(line["seq"], json.loads(line["ops"]))
+        """Bring hr.db level with the journal.
+        * Lines hr.db has not seen (a crash after the commit point) are folded.
+        * If hr.db is AHEAD of or DIFFERENT from the journal (the journal file was lost and restored from an older backup), the
+          journal is never rewritten: the difference between the journal's state and hr.db is recorded as ONE new
+          `recovery` line, so nothing in hr.db is lost and the permanent history stays continuous (BAMS rule)."""
+        with self.lock:
+            done, last = self.applied_seq(), self.journal.last_seq()
+            if not self.journal.follows(done, self.applied_hash()):
+                target = self._all_rows()
+                self._wipe()
+                self._fold_lines(0)
+                missing = self._diff_to(target)
+                if missing:
+                    seq = self._append("system", f"Recovery: {len(missing)} record(s) re-recorded after the journal was restored from a backup", missing, kind="recovery")
+                    self._fold(seq, missing)
+                    self.journal.audit("system", "journal.recovered", "system", {"records": len(missing), "tables_were_at": done, "journal_was_at": last})
+                return
+            self._fold_lines(done)
+
+    def _fold_lines(self, after):
+        for seq, kind, ops in self.journal.lines_after(after):
+            self._fold(seq, [o for o in ops if o.get("entity") in ENTITIES])
+
+    def _all_rows(self):
+        return {e: {r["id"]: r for r in self.list(e, include_deleted=True)} for e in ENTITIES}
+
+    def _wipe(self):
+        self.db.executescript("BEGIN; " + " ".join(f"DELETE FROM {e};" for e in ENTITIES) + " DELETE FROM meta; COMMIT;")
+
+    def _diff_to(self, target):
+        """Full rows that make the current tables equal to `target` (rows only in the tables are soft-deleted)."""
+        out = []
+        for entity in ENTITIES:  # dependency order: org units, jobs, positions, employees
+            current = {r["id"]: r for r in self.list(entity, include_deleted=True)}
+            for gid, row in target[entity].items():
+                if gid not in current or canonical(current[gid]) != canonical(row):
+                    out.append({"entity": entity, "row": row})
+        return out
 
     def rebuild(self):
         """Recreate every business table from the journal (disaster recovery)."""
         with self.lock:
-            self.db.executescript("BEGIN; " + " ".join(f"DELETE FROM {e};" for e in ENTITIES) + " DELETE FROM meta; COMMIT;")
-            self.recover()
+            self._wipe()
+            self._fold_lines(0)
+
+    def restore_state(self, target, actor, label):
+        """Compensating restore (BAMS): make the current data equal to `target` (rows of a backup) with ONE new
+        journal line. History is never rolled back; the restore itself can be undone by restoring again."""
+        with self.lock:
+            now, out = _now(), []
+            for entity in ENTITIES:
+                current = {r["id"]: r for r in self.list(entity, include_deleted=True)}
+                for gid, row in target[entity].items():
+                    cur = current.get(gid)
+                    wanted = {k: row[k] for k in row if k not in ("ver", "updated_at", "updated_by")}
+                    if cur is None or any(canonical(cur.get(k)) != canonical(v) for k, v in wanted.items()):
+                        out.append({"entity": entity, "row": {**row, "ver": (cur["ver"] if cur else row["ver"]) + 1, "updated_at": now, "updated_by": actor}})
+                for gid, cur in current.items():
+                    if gid not in target[entity] and not cur["deleted"]:
+                        out.append({"entity": entity, "row": {**cur, "ver": cur["ver"] + 1, "deleted": 1, "deleted_at": now, "deleted_by": actor,
+                                                              "updated_at": now, "updated_by": actor}})
+            if not out:
+                return None
+            seq = self._append(actor, label, out, kind="restore")
+            self._fold(seq, out)
+            return seq
 
     def verify(self):
-        prev, expect = GENESIS, 1
-        rows = self.jdb.execute("SELECT * FROM journal ORDER BY seq").fetchall()
-        for r in rows:
-            line = {"seq": r["seq"], "id": r["id"], "at": r["at"], "actor": r["actor"], "label": r["label"], "ops": json.loads(r["ops"]), "prev": r["prev"]}
-            if r["seq"] != expect or r["prev"] != prev or line_hash(DOMAIN, line) != r["hash"]:
-                return {"ok": False, "lines": len(rows), "first_bad_seq": r["seq"], "last_hash": prev}
-            prev, expect = r["hash"], expect + 1
-        return {"ok": True, "lines": len(rows), "first_bad_seq": None, "last_hash": prev}
+        return self.journal.verify()
 
     def fingerprint(self):
         dump = {e: [dict(r, attrs=r["attrs"]) if "attrs" in r else r for r in self.list(e, include_deleted=True)] for e in ENTITIES}
@@ -339,7 +380,7 @@ class Registry:
 
     def close(self):
         self.db.close()
-        self.jdb.close()
+        self.journal.close()
 
 
 def _plain(value):

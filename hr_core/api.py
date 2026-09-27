@@ -1,0 +1,234 @@
+"""HR-System's HTTP API (phase 2) — a thin, strict translation of hr_core.service.HRService.
+
+* Sessions: cookie `hr_sid` (HttpOnly, SameSite=Strict). The token is kept only as a SHA-256 hash on the server.
+* Every mutation must be `Content-Type: application/json` (even with no body) and, when the browser sends an Origin, come from this
+  server's own origin (no cross-site requests). Bodies are limited to 1 MB.
+* Permissions are enforced by the service on every request; the answer to a missing right is 403, to a missing
+  or ended session 401, to a stale version 409. Unexpected errors answer 500 without details (they are audited).
+* The first administrator can be created only from the server machine itself, and only while no user exists.
+Standard library only.
+"""
+
+import json
+import re
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from .auth import AuthError
+from .backup import BackupError
+from .registry import Conflict, RegistryError
+
+MAX_BODY = 1 << 20
+LOCAL = {"127.0.0.1", "::1"}
+
+
+class HttpError(Exception):
+    def __init__(self, status, code, message):
+        super().__init__(message)
+        self.status, self.code = status, code
+
+
+def make_handler(service):
+    routes = []
+
+    def route(method, pattern):
+        def deco(fn):
+            routes.append((method, re.compile("^" + pattern + "$"), fn))
+            return fn
+        return deco
+
+    # -------------------------------------------------------------- sessions
+    @route("POST", "/api/setup")
+    def setup(h, body, user):
+        if h.client_address[0] not in LOCAL:
+            raise HttpError(403, "setup.local_only", "the first administrator can only be created on the server machine")
+        service.bootstrap_admin(body.get("username", ""), body.get("display_name", ""), body.get("password", ""), h.ip)
+        return 201, {"ok": True}
+
+    @route("POST", "/api/login")
+    def login(h, body, user):
+        token, u = service.login(body.get("username"), body.get("password"), h.ip)
+        h.set_cookie = f"hr_sid={token}; HttpOnly; SameSite=Strict; Path=/"
+        return 200, service.me(u)
+
+    @route("POST", "/api/logout")
+    def logout(h, body, user):
+        service.logout(h.token, user, h.ip)
+        h.set_cookie = "hr_sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
+        return 200, {"ok": True}
+
+    @route("GET", "/api/me")
+    def me(h, body, user):
+        service.require(user, "self", h.ip)
+        return 200, service.me(user)
+
+    @route("POST", "/api/password")
+    def password(h, body, user):
+        service.change_own_password(user, body.get("old", ""), body.get("new", ""), h.ip)
+        return 200, {"ok": True}
+
+    # -------------------------------------------------------------- business data
+    @route("GET", "/api/recycle")
+    def recycle(h, body, user):
+        return 200, service.recycle_bin(user, h.ip)
+
+    @route("GET", "/api/(org_unit|job|position|employee)")
+    def list_(h, body, user, entity):
+        return 200, service.list(user, entity, h.query.get("deleted") == "1", h.ip)
+
+    @route("PUT", "/api/(org_unit|job|position|employee)/([^/]+)")
+    def put(h, body, user, entity, code):
+        return 200, service.save(user, entity, code, body.get("fields") or {}, body.get("expected_ver"), h.ip)
+
+    @route("DELETE", "/api/(org_unit|job|position|employee)/([^/]+)")
+    def delete(h, body, user, entity, code):
+        ver = h.query.get("ver")
+        if not (ver or "").isdigit():
+            raise HttpError(409, "ver.required", "send the version you are deleting (?ver=)")
+        return 200, {"seq": service.delete(user, entity, code, int(ver), h.query.get("type"), h.ip)}
+
+    @route("POST", "/api/(org_unit|job|position|employee)/([^/]+)/restore")
+    def restore(h, body, user, entity, code):
+        return 200, {"seq": service.restore(user, entity, code, body.get("type"), h.ip)}
+
+    # -------------------------------------------------------------- accounts
+    @route("GET", "/api/admin/users")
+    def users(h, body, user):
+        return 200, service.users(user, h.ip)
+
+    @route("POST", "/api/admin/users")
+    def create_user(h, body, user):
+        return 201, {"seq": service.create_user(user, body.get("username", ""), body.get("display_name", ""), body.get("password", ""),
+                                                body.get("profile", ""), body.get("extra_perms") or [], h.ip)}
+
+    @route("PATCH", "/api/admin/users/([^/]+)")
+    def update_user(h, body, user, username):
+        return 200, {"seq": service.update_user(user, username, body.get("fields") or {}, body.get("expected_ver"), h.ip)}
+
+    @route("POST", "/api/admin/users/([^/]+)/password")
+    def reset_password(h, body, user, username):
+        return 200, {"seq": service.reset_password(user, username, body.get("password", ""), h.ip)}
+
+    @route("GET", "/api/admin/profiles")
+    def profiles(h, body, user):
+        return 200, service.profiles(user, h.ip)
+
+    @route("PUT", "/api/admin/profiles/([^/]+)")
+    def save_profile(h, body, user, code):
+        return 200, {"seq": service.save_profile(user, code, body.get("name", code), body.get("perms") or [], body.get("expected_ver"), h.ip)}
+
+    # -------------------------------------------------------------- audit, health, backups
+    @route("GET", "/api/admin/audit")
+    def audit(h, body, user):
+        return 200, service.audit_entries(user, h.query.get("category"), min(int(h.query.get("limit", "200") or 200), 1000), h.ip)
+
+    @route("GET", "/api/admin/health")
+    def health(h, body, user):
+        return 200, service.health(user, h.ip)
+
+    @route("GET", "/api/admin/backups")
+    def backups(h, body, user):
+        return 200, service.backup_list(user, h.ip)
+
+    @route("POST", "/api/admin/backups")
+    def backup_create(h, body, user):
+        return 201, service.backup_create(user, h.ip)
+
+    @route("POST", "/api/admin/backups/([^/]+)/(verify|rehearse|restore)")
+    def backup_action(h, body, user, name, action):
+        fn = {"verify": service.backup_verify, "rehearse": service.backup_rehearse, "restore": service.backup_restore}[action]
+        out = fn(user, name, h.ip)
+        return 200, out if isinstance(out, dict) else {"seq": out}
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "HR-System"
+        sys_version = ""
+
+        def log_message(self, *args):  # requests are audited by the service; no access log with tokens
+            pass
+
+        def _dispatch(self, method):
+            self.set_cookie, self.ip = None, self.client_address[0]
+            url = urlparse(self.path)
+            self.query = {k: v[-1] for k, v in parse_qs(url.query).items()}
+            cookie = SimpleCookie(self.headers.get("Cookie") or "")
+            self.token = cookie["hr_sid"].value if "hr_sid" in cookie else None
+            try:
+                if method != "GET":
+                    origin = self.headers.get("Origin")
+                    if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                        raise HttpError(403, "origin.refused", "cross-site request refused")
+                    length = int(self.headers.get("Content-Length") or 0)
+                    if length > MAX_BODY:
+                        raise HttpError(413, "body.too_large", "request too large")
+                    # every change must declare JSON, even with no body: a cross-site form cannot (CORS preflight)
+                    if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+                        raise HttpError(415, "body.json_only", "send JSON (Content-Type: application/json)")
+                    raw = self.rfile.read(length) if length else b""
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise HttpError(400, "body.object", "the body must be a JSON object")
+                else:
+                    body = {}
+                for m, rx, fn in routes:
+                    match = rx.match(url.path)
+                    if m == method and match:
+                        user = service.session(self.token) if self.token else None
+                        status, out = fn(self, body, user, *match.groups())
+                        return self._send(status, out)
+                raise HttpError(404, "not_found", "no such address")
+            except HttpError as exc:
+                self._send(exc.status, {"error": exc.code, "message": str(exc)})
+            except AuthError as exc:
+                self._send(exc.status, {"error": exc.code, "message": str(exc)})
+            except Conflict as exc:
+                self._send(409, {"error": exc.code, "message": str(exc)})
+            except RegistryError as exc:
+                self._send(404 if exc.code.endswith("not_found") else 400, {"error": exc.code, "message": str(exc)})
+            except BackupError as exc:
+                self._send(400, {"error": "backup", "message": str(exc)})
+            except (ValueError, KeyError, TypeError):
+                self._send(400, {"error": "bad_request", "message": "the request could not be read"})
+            except Exception as exc:
+                try:
+                    service.journal.audit("system", "server.error", "-", {"error": type(exc).__name__, "path": url.path}, self.ip)
+                except Exception:
+                    pass
+                self._send(500, {"error": "server", "message": "internal error (recorded in the audit log)"})
+
+        def _send(self, status, payload):
+            data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            if self.set_cookie:
+                self.send_header("Set-Cookie", self.set_cookie)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            self._dispatch("GET")
+
+        def do_POST(self):
+            self._dispatch("POST")
+
+        def do_PUT(self):
+            self._dispatch("PUT")
+
+        def do_PATCH(self):
+            self._dispatch("PATCH")
+
+        def do_DELETE(self):
+            self._dispatch("DELETE")
+
+    return Handler
+
+
+def serve(service, host="127.0.0.1", port=8766):
+    server = ThreadingHTTPServer((host, port), make_handler(service))
+    server.daemon_threads = True
+    return server
