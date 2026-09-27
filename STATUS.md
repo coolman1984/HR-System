@@ -18,7 +18,7 @@ restore; a restart loses nothing; an update over an installed version keeps data
 and a power cut in the middle of an update are survived; every HR test and planted bug; GMES's real HR end-to-end
 test against the new commit.
 
-**Where it stands:** everything above is built and passes on Linux (`TEST_HR_DELIVERY.py`, 69 checks) and, for the
+**Where it stands:** everything above is built and passes on Linux (`TEST_HR_DELIVERY.py`, 72 checks) and, for the
 installed program, in the CI job `windows-installer` (`tools/installed_acceptance.py`: Python hidden from the
 program, outbound network blocked). Still owed before the gate closes: the owner's clean-PC run in Windows Sandbox
 (`installer/clean-pc-test.wsb`, `docs/HR_DELIVERY.md` §5), because the CI machine has Python installed.
@@ -112,7 +112,7 @@ python BUILD_PROJECT.py
 On Windows (CI job `windows-installer`): `python tools/build_windows.py`, then `python tools/installed_acceptance.py`.
 Then, in a GMES checkout: `sh scripts/fetch-hr.sh`, `ECO_E2E_REQUIRED=1 npm test`, `node scripts/mutations.mjs`.
 
-**Last full run (2026-09-27, phase 2.5):** every test above passes on Linux; 55 of 55 planted bugs caught; GMES against
+**Last full run (2026-09-27, phase 2.5):** every test above passes on Linux; 58 of 58 planted bugs caught; GMES against
 this repository: 15 + 29 + 10 tests pass, every GMES planted bug caught. The Windows installer job: see the pull request.
 
 ## Architecture inventory (checked by `TEST_DOCS_CURRENT.py`)
@@ -180,5 +180,5 @@ route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
 route: GET /api/info
 route: GET /api/admin/settings
 route: PUT /api/admin/settings
-mutations: 55
+mutations: 58
 ```

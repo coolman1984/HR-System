@@ -132,6 +132,8 @@ check("setup_only_from_the_server_machine", s == 403 and out["error"] == "setup.
 far.shutdown()
 s, out, _ = anon.call("POST", "/api/setup/install", {"company": {"source": "local", "code": "NILE", "name": "Nile"}, "admin": {"username": "admin1", "password": "short"}})
 check("a_refused_setup_writes_nothing", s == 400 and not H.company(), out)
+s, out, _ = anon.call("POST", "/api/setup/install", {"company": {"source": "local", "code": "NILE", "name": "Nile"}, "admin": {"username": "x", "password": PASSWORD}})
+check("a_wrong_administrator_name_writes_no_company_identity", s == 400 and not H.company(), out)  # Codex review, PR 4
 s, out, _ = anon.call("POST", "/api/setup/install", {"company": {"source": "owner", "owner_app": "mizan", "id": MIZAN_COMPANY, "code": "NILE", "name": "Nile Electronics"},
                                                      "admin": {"username": "admin1", "display_name": "Admin", "password": PASSWORD}})
 check("setup_with_the_owners_identity", s == 201 and H.company()["id"] == MIZAN_COMPANY, out)
@@ -181,6 +183,12 @@ rows = sorted(P.attendance.engine.current_rows(), key=lambda r: json.dumps(r, so
 check("attendance_rows_are_the_golden_rows", hashlib.sha256(json.dumps(rows, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
       == golden["_current_rows_sha256"])
 check("an_upload_is_audited_with_its_person", any(a["event"] == "attendance.uploaded" and a["actor"] == "officer1" for a in P.service.journal.audit_entries("activity", 50)))
+s, out, _ = officer.call("POST", "/api/upload?filename=05_Time_Attendance_Leave.xlsx", raw=CLEAN.read_bytes())
+s2, out2, _ = officer.call("POST", "/api/upload?filename=broken.xlsx", raw=b"not a workbook")
+events = [a for a in P.service.journal.audit_entries("activity", 50) if a["event"].startswith("attendance.")]
+check("a_refused_or_duplicate_upload_is_not_recorded_as_a_change", out.get("duplicate_upload") and s2 == 400
+      and sum(1 for a in events if a["event"] == "attendance.uploaded") == 1 and sum(1 for a in events if a["event"] == "attendance.refused") == 2,
+      [(a["event"], a["detail"]) for a in events])  # Codex review, PR 4
 
 s, _, _ = viewer.call("GET", "/api/admin/settings")
 check("settings_need_their_right", s == 403)
@@ -278,6 +286,8 @@ check("the_update_is_journaled_and_audited", any(a["event"] == "upgrade.done" fo
 for _ in range(16):
     svc.backups.create("test", "manual")
 check("retention_never_removes_a_pre_update_backup", len(svc.backups.list()) == 15 and any(b["kept_forever"] for b in svc.backups.list()))
+check("the_latest_backup_is_the_newest_whatever_its_kind", not svc.backups.latest()["kept_forever"]
+      and svc.backups.list()[0]["created_at"] >= svc.backups.list()[-1]["created_at"])  # Codex review, PR 4
 svc.close()
 svc, rep = upgrade.prepare(hm, opener(hm))
 check("an_up_to_date_installation_starts_without_a_new_backup", "backup" not in rep and len([b for b in svc.backups.list() if b["kept_forever"]]) == 1)

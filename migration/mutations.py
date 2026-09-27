@@ -101,6 +101,12 @@ MUTATIONS = [
      'if background and not cfg.get("autostart", True):', "if False:", "TEST_HR_DELIVERY.py"),
     ("an Arabic text is missing", "hr_core/web/i18n/ar.json",
      ' "cancel": "إلغاء",\n', "", "TEST_HR_DELIVERY.py"),
+    ("the company identity is written before the administrator is checked", "hr_core/app.py",
+     "            if not USERNAME.match(username):", "            if False:", "TEST_HR_DELIVERY.py"),
+    ("backups are ordered by name instead of time", "hr_core/backup.py",
+     "key=_age, reverse=True):  # by time", "reverse=True):  # by time", "TEST_HR_DELIVERY.py"),
+    ("a refused attendance upload is audited as a change", "hr_core/api.py",
+     'done = status == 200 and "error" not in reply and not reply.get("duplicate_upload")', "done = True", "TEST_HR_DELIVERY.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"shifts": {"depends_on": ["kernel"], "status": "planned"', '"shifts": {"depends_on": ["kernel"], "status": "built"', "TEST_DOCS_CURRENT.py"),

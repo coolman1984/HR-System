@@ -14,8 +14,8 @@ backups (HISTORY.md, 2026-09-27).
 |---|---|
 | One file | `HR-System-Setup-<version>.exe`: installs on a new PC, updates an installed one (same file) |
 | Program | `C:\Program Files\HR-System\HR-System.exe`: compiled (Nuitka), its own Python runtime, openpyxl and `cryptography` inside; no readable program source (the one exception is `CUSTOM_RULES.py`, the attendance engine's documented customisation hook) |
-| Data | `%ProgramData%\HR-System\`: `config.json`, `data\` (journal, tables, accounts, attendance history, device identity), `backups\`, `recovery\`, `logs\`. Kept on update and on removal |
-| Start | Start menu and optional desktop icon; "start with Windows" is offered and ticked by default (it is the server PC), and can be switched off in Settings |
+| Data | `%ProgramData%\HR-System\`: `config.json`, `data\` (journal, tables, accounts, attendance history, device identity), `backups\`, `recovery\`, `logs\`. Kept on update and on removal. Readable only by SYSTEM, the Administrators and the account that installed and runs the server (not by other users of the PC) |
+| Start | Start menu and optional desktop icon; "start with Windows" (for the installing person, who runs the server) is offered and ticked by default, and can be switched off in Settings |
 | Entry | One address, one sign-in: `http://127.0.0.1:8766/` — employees and organisation, attendance, users and permissions, backups, system health, settings |
 | Old attendance program | On a first install the installer offers to COPY the old program's `data\history.db` (the old folder stays as it was) |
 | Microsoft Excel | Not assumed: the installer and the health screen say whether it is there; only protected workbooks need it |
@@ -28,6 +28,9 @@ backups (HISTORY.md, 2026-09-27).
   (`tools/build_windows.py`); Inno Setup wraps it (`installer/hr-system.iss`). Program in Program Files, data in
   `%ProgramData%\HR-System`. The screens are packed inside the program at build time (`tools/make_assets.py`).
   CI builds the installer on every pull request and accepts the installed program on Windows.
+  The data folder does not inherit ProgramData's "every user may change" rights: SYSTEM, Administrators and the
+  installing account only (it holds the journal, password hashes and the device key). A Windows service under its
+  own account is the next step if several people must run the server on one PC.
 - **Why.** The customer installs nothing (ADR-HR-002's condition for bundling `cryptography` is met: one runtime,
   one build), the data survives updates and removal, and nobody edits the program by editing files.
 - **Rejected.** (a) The old ZIP + "use the customer's Python": `cryptography`/`cffi` would need a build per Python
@@ -77,7 +80,7 @@ backups (HISTORY.md, 2026-09-27).
 ## 3. Tests
 | What | Where |
 |---|---|
-| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages | `TEST_HR_DELIVERY.py` (69 checks) and 14 planted bugs in `migration/mutations.py` |
+| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages | `TEST_HR_DELIVERY.py` (72 checks) and 17 planted bugs in `migration/mutations.py` |
 | The installed program on Windows: no Python visible, outbound network blocked, install with the old attendance history, first administrator, register, permissions, attendance, backup/rehearsal/restore, restart, update over the installed version, failure and power cut in the middle of an update, removal keeps the data | `tools/installed_acceptance.py` in the CI job `windows-installer` |
 
 ## 4. Limits, said plainly

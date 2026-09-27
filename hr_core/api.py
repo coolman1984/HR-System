@@ -270,12 +270,26 @@ def make_handler(service, product=None):
                 return False
             user = service.session(self.token) if self.token else None
             service.require(user, right, self.ip, f"attendance:{url.path}")
+            self.engine_reply = None
             with attendance.lock:  # the locked engine answers its own address, as it always did
                 (attendance.engine.Handler.do_GET if method == "GET" else attendance.engine.Handler.do_POST)(self)
             from .attendance import CHANGES
             if url.path in CHANGES:
-                service.journal.audit("activity", CHANGES[url.path], user["code"], {"path": url.path}, self.ip)
+                status, reply = self.engine_reply or (None, None)
+                reply = reply if isinstance(reply, dict) else {}
+                done = status == 200 and "error" not in reply and not reply.get("duplicate_upload")
+                detail = {"path": url.path, "status": status}
+                if done:
+                    detail.update({k: reply[k] for k in ("run_id", "accepted_count", "rejected_count", "current_count") if k in reply})
+                else:
+                    detail["duplicate"] = bool(reply.get("duplicate_upload"))
+                service.journal.audit("activity", CHANGES[url.path] if done else "attendance.refused", user["code"], detail, self.ip)
             return True
+
+        def send_json(self, payload, status=200):
+            """The engine answers through this (engine.Handler.send_json); remember what it said, for the audit."""
+            self.engine_reply = (status, payload)
+            return attendance.engine.Handler.send_json(self, payload, status)
 
         def _send(self, status, payload):
             data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")

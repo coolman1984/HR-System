@@ -15,8 +15,26 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
   ADR-HR-006), data versions with a verified pre-update backup, put-back on failure and resume after a power cut, and
   the recovery installer (`hr_core/upgrade.py`, ADR-HR-007), a Windows installer built with Nuitka and Inno Setup and
   accepted in CI with Python hidden and the network blocked (`tools/`, `installer/`, ADR-HR-004). `TEST_HR_DELIVERY.py`
-  (69 checks), 14 planted bugs (55 in total). Decisions: `docs/HR_DELIVERY.md`.
+  (72 checks), 17 planted bugs (58 in total). Decisions: `docs/HR_DELIVERY.md`.
 - **Why:** stage 3.0 found that customers could install none of phases 1-2; the owner put delivery before shifts.
+
+### Four review findings on the first phase-2.5 pull request (Codex)
+- **Symptom:** (1) the installer gave the built-in Users group modify rights on `%ProgramData%\HR-System`, so any other
+  account on the PC could read HR data, password hashes and the device key, or write "valid" signed history; (2) setup
+  wrote the company identity before the administrator's user name was checked, so a refusal left an identity that can
+  never change; (3) once a `keep-` backup existed it always sorted first, so "latest backup" and the automatic
+  backup's "nothing changed" check used the old one; (4) a refused or duplicate attendance upload was audited as
+  `attendance.uploaded`.
+- **Cause:** (1) the BAMS installer pattern was copied for a folder that holds secrets BAMS keeps elsewhere; (2) only
+  the password was checked before the write; (3) sorting by name, and `k` > `h`; (4) the audit looked at the address,
+  not at what the engine answered.
+- **Fix:** (1) the installer removes inherited rights and grants SYSTEM, Administrators and the installing account
+  only (`icacls`), the start-up shortcut is that person's; the installed-program test checks the rights; (2) every
+  administrator field is checked before `set_company`, which itself validates before writing; (3) backups are
+  ordered by their time stamp; (4) the engine's reply is captured and a refusal is audited as `attendance.refused`.
+  Three new checks and three planted bugs (58).
+- **Lesson:** a reused pattern carries its assumptions: check what the folder holds before copying its rights. And
+  "written once" data must be the last thing written, after every other check.
 
 ### A backup failed with "the request could not be read"
 - **Symptom:** the first backup through the new server answered 400.

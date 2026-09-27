@@ -120,6 +120,18 @@ class Home:
         provisional id for a standalone HR."""
         if self.company():
             raise HomeError("company.set", "this installation already belongs to a company; its identity never changes silently")
+        source, code, name, company_id, owner_app = self.check_company(source, code, name, company_id, owner_app)
+        if source == "local":
+            company_id = uuid7()
+        cfg = self.config()
+        cfg["company"] = {"id": company_id, "code": code, "name": name, "source": source, "owner_app": owner_app,
+                          "provisional": source == "local", "set_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        self._write(cfg)
+        return cfg["company"]
+
+    @staticmethod
+    def check_company(source, code, name, company_id=None, owner_app=None):
+        """The company fields as they would be stored, or HomeError; writes nothing."""
         if source not in SOURCES:
             raise HomeError("company.source", "the company identity comes from its owner application or is created locally")
         code, name = (code or "").strip().upper(), (name or "").strip()
@@ -135,9 +147,5 @@ class Home:
             except ValueError:
                 raise HomeError("company.id", "paste the company id exactly as the owner application shows it") from None
         else:
-            company_id, owner_app = uuid7(), None
-        cfg = self.config()
-        cfg["company"] = {"id": company_id, "code": code, "name": name, "source": source, "owner_app": owner_app,
-                          "provisional": source == "local", "set_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        self._write(cfg)
-        return cfg["company"]
+            company_id, owner_app = None, None
+        return source, code, name, company_id, owner_app

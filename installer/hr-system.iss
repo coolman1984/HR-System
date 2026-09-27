@@ -48,8 +48,10 @@ Name: "autostart"; Description: "Start HR-System when Windows starts (recommende
 Name: "desktopicon"; Description: "Put an icon on the desktop"
 
 [Dirs]
-; data, backups, settings and the recovery installer: kept when the program is updated or removed
-Name: "{commonappdata}\HR-System"; Permissions: users-modify; Flags: uninsneveruninstall
+; data, backups, settings and the recovery installer: kept when the program is updated or removed. NOT writable by
+; every user of the PC: the server runs as the person who installed it, and LockDownData() below leaves access to that
+; person, the administrators and the system only (the journal, password hashes and the device key are in there).
+Name: "{commonappdata}\HR-System"; Flags: uninsneveruninstall
 Name: "{commonappdata}\HR-System\data"; Flags: uninsneveruninstall
 Name: "{commonappdata}\HR-System\recovery"; Flags: uninsneveruninstall
 
@@ -59,7 +61,7 @@ Source: "..\build\hr_main.dist\*"; DestDir: "{app}"; Flags: ignoreversion recurs
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\HR-System.exe"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\HR-System.exe"; Tasks: desktopicon
-Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\HR-System.exe"; Parameters: "--background"; Tasks: autostart
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\HR-System.exe"; Parameters: "--background"; Tasks: autostart
 
 [Run]
 Filename: "{app}\HR-System.exe"; Description: "Open HR-System now"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -187,6 +189,26 @@ begin
   SaveStringToFile(Dir + '\installer.json', Json, False);
 end;
 
+function ServerAccount(): String;
+begin
+  Result := ExpandConstant('{%USERDOMAIN|}');
+  if Result <> '' then
+    Result := Result + '\';
+  Result := Result + ExpandConstant('{username}');
+end;
+
+procedure LockDownData();
+var
+  Code: Integer;
+begin
+  { no inherited rights (the built-in Users group of ProgramData must not reach HR data); full control for SYSTEM and
+    the Administrators (by SID, any Windows language), change rights for the account that runs the server }
+  if not Exec(ExpandConstant('{sys}\icacls.exe'), '"' + DataHome() + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F "' +
+              ServerAccount() + ':(OI)(CI)M" /T /C /Q', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    MsgBox('The access rights of ' + DataHome() + ' could not be limited (code ' + IntToStr(Code) + '). Ask for help: other users of this ' +
+           'computer might be able to read HR data.', mbError, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Old: String;
@@ -199,5 +221,6 @@ begin
     if (Old <> '') and (not HasData()) and FileExists(Old + '\data\history.db') then
       BringOldData(Old);
     KeepInstallerForRecovery();
+    LockDownData();
   end;
 end;

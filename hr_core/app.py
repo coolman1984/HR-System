@@ -64,14 +64,20 @@ class Product:
         """First run: the company identity (from its owner application, or a local provisional one) and the first
         administrator. Checked before anything is written; if the program stops in between, the next attempt
         continues (the identity, once written, is kept and only the administrator is still asked for)."""
-        from .auth import _policy
+        from .auth import USERNAME, _policy
         with self.lock:
             if self.error:
                 raise HomeError("setup.blocked", self.error["message"])
+            # everything about the administrator is checked BEFORE the company identity is written: the identity
+            # can never be changed afterwards, so a refusal must leave nothing behind
             _policy(admin.get("password") or "")
             username = (admin.get("username") or "").strip().lower()
-            if not username:
-                raise HomeError("setup.admin", "the administrator needs a user name")
+            if not USERNAME.match(username):
+                raise HomeError("setup.admin", "user names are 3-50 lower-case letters, digits, dot, dash or underscore")
+            if len((admin.get("display_name") or username).strip()) > 100:
+                raise HomeError("setup.admin", "the name is too long")
+            if not self.home.company():
+                self.home.check_company(company.get("source"), company.get("code"), company.get("name"), company.get("id"), company.get("owner_app"))
             if not self.home.company():
                 self.home.set_company(company.get("source"), company.get("code"), company.get("name"), company.get("id"), company.get("owner_app"))
             if self.service is None:

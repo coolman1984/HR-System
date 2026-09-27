@@ -153,8 +153,11 @@ def main(setup):
           and hashlib.sha256(open(os.path.join(old, "data", "history.db"), "rb").read()).hexdigest() == old_hash)
     pending = os.path.join(HOME, "recovery", "pending", "installer.json")
     check("installer_left_a_copy_for_recovery", os.path.isfile(pending) and json.load(open(pending))["version"] == VERSION)
-    startup = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), r"Microsoft\Windows\Start Menu\Programs\StartUp", "HR-System.lnk")
-    check("starts_with_windows_by_default", os.path.isfile(startup))
+    startup = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup", "HR-System.lnk")
+    check("starts_with_windows_by_default_for_the_installing_person", os.path.isfile(startup), startup)
+    acl = subprocess.run(["icacls", HOME], capture_output=True, text=True).stdout
+    check("data_is_not_open_to_every_user_of_the_pc", all(g not in acl for g in ("BUILTIN\\Users", "Everyone", "Authenticated Users"))
+          and os.environ["USERNAME"].lower() in acl.lower(), acl)
 
     rule = "HR-System acceptance: no internet"
     run(["netsh", "advfirewall", "firewall", "add", "rule", f"name={rule}", "dir=out", "action=block", f"program={EXE}", "enable=yes"], check=True)

@@ -197,7 +197,7 @@ class Backups:
     def list(self):
         out = []
         if os.path.isdir(self.dest):
-            for n in sorted(os.listdir(self.dest), reverse=True):
+            for n in sorted(os.listdir(self.dest), key=_age, reverse=True):  # by time: keep- and hr- interleave
                 mf = os.path.join(self.dest, n, "manifest.json")
                 if n.startswith(("hr-", KEEP)) and os.path.isfile(mf):
                     m = json.load(open(mf, encoding="utf-8"))
