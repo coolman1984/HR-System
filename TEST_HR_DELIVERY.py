@@ -335,7 +335,8 @@ finally:
     os.environ.pop("HR_UPGRADE_FAULT")
 svc = opener(hm)()
 check("a_failed_update_puts_the_data_back", failed and set(svc.auth._get("profile", "administrator")["perms"]) == before_perms
-      and upgrade.read_version(hm.data) == 0 and not os.path.exists(os.path.join(hm.data, upgrade.MARKER)) and svc.journal.verify()["ok"])
+      and upgrade.read_version(hm.data) == 0 and json.load(open(os.path.join(hm.data, upgrade.VERSION_FILE)))["data_version"] == 0
+      and not os.path.exists(os.path.join(hm.data, upgrade.MARKER)) and svc.journal.verify()["ok"])
 check("a_failed_update_keeps_its_backup", any(b["kept_forever"] for b in svc.backups.list()))
 svc.close()
 svc, rep = upgrade.prepare(hm, opener(hm))

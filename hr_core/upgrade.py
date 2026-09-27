@@ -166,10 +166,7 @@ def _put_back(home, marker):
                 os.remove(os.path.join(home.data, f + side))
         shutil.copy2(os.path.join(backup, f), os.path.join(home.data, f + ".restoring"))
         os.replace(os.path.join(home.data, f + ".restoring"), os.path.join(home.data, f))
-    if marker["from"]:
-        write_version(home.data, marker["from"])
-    elif os.path.exists(os.path.join(home.data, VERSION_FILE)):
-        os.remove(os.path.join(home.data, VERSION_FILE))  # data from before versions existed: no file, as before
+    write_version(home.data, marker["from"])  # the version the data had before the update (0 = before versions existed)
     os.remove(os.path.join(home.data, MARKER))
 
 

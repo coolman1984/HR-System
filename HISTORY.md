@@ -36,6 +36,18 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 - **Lesson:** a reused pattern carries its assumptions: check what the folder holds before copying its rights. And
   "written once" data must be the last thing written, after every other check.
 
+### The installed program's first run in CI: 23 steps passed, then "a failed update puts the data back" failed
+- **Symptom:** on Windows, with Python hidden and the network blocked, the installed program passed install, setup,
+  register, permissions, attendance, signing with the bundled `cryptography`, backup/rehearsal/restore, restart and an
+  update over the installed version; after a planted failure mid-update the data version file was gone, not 0.
+  Earlier runs of the same job showed the data folder's rights shutting out the installing account (`icacls /T` with
+  inheritance flags on existing files).
+- **Cause:** putting the data back removed `data_version.json` when the old version was 0 (a falsy test on the
+  number); the rights were applied file by file instead of on the folder.
+- **Fix:** the old version is always written back (0 included), the Linux check requires the file; rights are set on
+  the folder and its contents reset to inherit them.
+- **Lesson:** "put back exactly" includes the small files; test 0 as a value, not as "nothing".
+
 ### A broken upload held the attendance screen for minutes on a PC without Excel
 - **Symptom:** in Windows CI an upload of a file that is not a workbook timed out after 120 s; everything else waited
   behind the attendance lock (uploads, backups).

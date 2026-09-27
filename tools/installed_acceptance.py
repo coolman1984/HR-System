@@ -240,8 +240,10 @@ def main(setup):
         prog = Program(HR_TEST_HOOKS="1", HR_UPGRADE_FAULT="fail:1")
         info = prog.wait_ready()
         check("a_failed_update_stops_with_a_message", info.get("error") and info["error"]["code"] == "upgrade.failed", info)
-        check("a_failed_update_puts_the_data_back", data_version() == 0 and journal_state()[0] <= before[0] + 0
-              and not os.path.exists(os.path.join(DATA, "upgrade-in-progress.json")))
+        check("a_failed_update_puts_the_data_back", data_version() == 0 and journal_state()[0] <= before[0]
+              and not os.path.exists(os.path.join(DATA, "upgrade-in-progress.json")),
+              {"data_version": data_version(), "journal": journal_state(), "before": before,
+               "marker": os.path.exists(os.path.join(DATA, "upgrade-in-progress.json"))})
         prog.stop()
         prog = Program()
         prog.wait_ready()
