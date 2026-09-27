@@ -3,6 +3,8 @@ name: build-any-excel-project
 description: Adapt this small offline Golden Template to any Excel-based business process without breaking the reusable engine.
 ---
 
+> **SCOPE:** this skill covers only the migrated Excel attendance engine that ships in the customer ZIP. The HR system as a whole (registry, security, contracts, phases) is `.claude/skills/hr-development/SKILL.md`; where the work stands is `STATUS.md`.
+
 # Build any Excel project
 
 Read `PROJECT_GUIDE.md`, `project_memory/PROJECT_LOG.md`,

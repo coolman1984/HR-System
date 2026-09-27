@@ -68,20 +68,50 @@ MUTATIONS = [
      'def verify(pub, msg, sig):', 'def verify(pub, msg, sig):  # tidied', "TEST_HR_SECURITY.py"),
     ("the private device key is put into backups", "hr_core/backup.py",
      'files = {f: {"sha256"', 'shutil.copytree(os.path.join(self.data_dir, "node"), os.path.join(work, "node"))\n                files = {f: {"sha256"', "TEST_HR_SECURITY.py"),
+    # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
+    ("a module is marked built without the documents", "hr_core/modules.py",
+     '"shifts": {"depends_on": ["kernel"], "status": "planned"', '"shifts": {"depends_on": ["kernel"], "status": "built"', "TEST_DOCS_CURRENT.py"),
+    ("a new kernel file appears without the documents", "hr_core/shifts.py",
+     None, '"""Shift definitions (not documented yet)."""\n', "TEST_DOCS_CURRENT.py"),
+    ("an HTTP route changes without the documents", "hr_core/api.py",
+     '@route("GET", "/api/me")', '@route("GET", "/api/whoami")', "TEST_DOCS_CURRENT.py"),
+    ("a test no longer runs in CI", ".github/workflows/ci.yml",
+     "      - run: python TEST_HR_REGISTRY.py\n", "", "TEST_DOCS_CURRENT.py"),
+    ("the handoff names another phase than the status", "AGENT_HANDOFF.md",
+     "```handoff\nphase: 3", "```handoff\nphase: 4", "TEST_DOCS_CURRENT.py"),
+    ("the design marks phase 3 done while the status does not", "docs/HR_SYSTEM_DESIGN.md",
+     "| 3 | الورديات والجداول والتكليفات مستقلة", "| **3 (منفذة)** | الورديات والجداول والتكليفات مستقلة", "TEST_DOCS_CURRENT.py"),
+    ("a history discovery loses its lesson", "HISTORY.md",
+     "- **Lesson:** a document nobody", "- **Note:** a document nobody", "TEST_DOCS_CURRENT.py"),
+    ("the status moves on without a history entry", "HISTORY.md",
+     "## 2026-09-27 — Stage 3.0", "## 2026-09-26 — Stage 3.0", "TEST_DOCS_CURRENT.py"),
+    ("the old attendance-only claim returns to the README", "README.md",
+     "## ما يصل للعميل اليوم\n", "## ما يصل للعميل اليوم\n\nهذه النسخة هي أساس الحضور فقط.\n", "TEST_DOCS_CURRENT.py"),
+    ("an outdated guide loses its historical banner", "PROJECT_GUIDE.md",
+     "> **HISTORICAL (2026-09-05", "> **Note (2026-09-05", "TEST_DOCS_CURRENT.py"),
 ]
 
 survived = 0
 for name, rel, old, new, test in MUTATIONS:
     path = ROOT / rel
-    original = path.read_text(encoding="utf-8")
-    if old not in original:
-        sys.exit(f"mutation '{name}': anchor not found in {rel}")
-    path.write_text(original.replace(old, new, 1), encoding="utf-8")
+    if old is None:  # the planted bug is a new file
+        if path.exists():
+            sys.exit(f"mutation '{name}': {rel} already exists")
+        original = None
+        path.write_text(new, encoding="utf-8")
+    else:
+        original = path.read_text(encoding="utf-8")
+        if old not in original:
+            sys.exit(f"mutation '{name}': anchor not found in {rel}")
+        path.write_text(original.replace(old, new, 1), encoding="utf-8")
     try:
         env = dict(os.environ, PYTHONPATH=str(ROOT / "vendor.zip"))
         failed = subprocess.run([sys.executable, test], cwd=ROOT, env=env, capture_output=True).returncode != 0
     finally:
-        path.write_text(original, encoding="utf-8")
+        if original is None:
+            path.unlink()
+        else:
+            path.write_text(original, encoding="utf-8")
     print(("caught    " if failed else "SURVIVED  ") + name)
     survived += 0 if failed else 1
 subprocess.run(["git", "checkout", "--", "sample/"], cwd=ROOT, capture_output=True)
