@@ -8,6 +8,50 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-27 — Phase 2.5: HR-System becomes one installable product
+- **What:** one server and one sign-in for everything (`hr_main.py`, `hr_core/app.py`, `hr_core/web.py`), screens in
+  English and Arabic (`hr_core/web/`), the locked attendance engine behind the same sign-in (`hr_core/attendance.py`,
+  three new rights), the installation home outside the program and the company identity rules (`hr_core/home.py`,
+  ADR-HR-006), data versions with a verified pre-update backup, put-back on failure and resume after a power cut, and
+  the recovery installer (`hr_core/upgrade.py`, ADR-HR-007), a Windows installer built with Nuitka and Inno Setup and
+  accepted in CI with Python hidden and the network blocked (`tools/`, `installer/`, ADR-HR-004). `TEST_HR_DELIVERY.py`
+  (69 checks), 14 planted bugs (55 in total). Decisions: `docs/HR_DELIVERY.md`.
+- **Why:** stage 3.0 found that customers could install none of phases 1-2; the owner put delivery before shifts.
+
+### A backup failed with "the request could not be read"
+- **Symptom:** the first backup through the new server answered 400.
+- **Cause:** the manifest recorded the attendance file's modification time in nanoseconds, larger than the integers
+  canonical JSON carries exactly (2^53), so signing the manifest refused it. The audit's new file:line
+  (`canonical.py:18`) named it at once.
+- **Fix:** the time is stored as a string.
+- **Lesson:** every value that goes into a signed, canonical document must fit its number rules; record where an error
+  happened, not only its type.
+
+### A test fixture that wrote tables directly could not be updated
+- **Symptom:** the first version of the "phase-2 installation" fixture made the pre-update rehearsal fail
+  (`accounts_rebuilt_identical failed`), so the update refused to run.
+- **Cause:** the fixture changed `auth.db` rows without a journal line; the rehearsal rebuilds accounts from the
+  journal and correctly found a difference.
+- **Fix:** the fixture writes the old profiles as a journal line, as the phase-2 program did.
+- **Lesson:** tables are folds of the journal; a fixture (or a repair) that skips the journal is corruption, and the
+  rehearsal is right to refuse it.
+
+### Buttons in tables were invisible, and the header hid itself too well
+- **Symptom:** screenshots of the first screens showed empty action columns ("Edit", "Check", "Restore") and, before
+  sign-in, a "Sign out" link on the setup page; another page showed "[object HTMLButtonElement]".
+- **Cause:** link-styled buttons inherited white text on a white table; `header { display: flex }` overrode the
+  `hidden` attribute; nested arrays of children were flattened one level only.
+- **Fix:** link buttons take the accent colour, `[hidden]` always hides, children are flattened fully, the header
+  stays (the language can be chosen before sign-in) and only "Sign out" hides.
+- **Lesson:** look at the screens in a real browser (screenshots) before calling them done; a passing API test says
+  nothing about what a person sees.
+
+### A new site could not be saved from the screen
+- **Symptom:** creating a site answered 400.
+- **Cause:** the registry requires a site's parent to be the company, and the form left "Belongs to" empty.
+- **Fix:** a new site belongs to the company unless another parent is chosen.
+- **Lesson:** a rule the registry enforces should be the screen's default, not a surprise.
+
 ## 2026-09-27 — Stage 3.0: continuity documents and the documentation guard
 - **What:** `HISTORY.md` (this file), `STATUS.md`, `docs/LESSONS.md`, `AGENT_HANDOFF.md`, the agent skill
   `.claude/skills/hr-development/SKILL.md`, and `TEST_DOCS_CURRENT.py` (10 planted bugs added to

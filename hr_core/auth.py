@@ -36,12 +36,19 @@ PERMISSIONS = {
     "admin.backup.manage": "Create, verify and rehearse backups",
     "admin.backup.restore": "Restore data from a backup (a compensating change)",
     "admin.system.read": "See system health, journal verification and devices",
+    "hr.attendance.read": "See attendance, its history and exports",
+    "hr.attendance.upload": "Upload attendance files and roll an upload back",
+    "admin.settings.manage": "Change this installation's settings (start with Windows, language)",
 }
+# Rights added after data version 0: hr_core/upgrade.py gives them to the built-in profiles of older installations.
+ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendance.upload", "admin.settings.manage"],
+                           "hr_officer": ["hr.attendance.read", "hr.attendance.upload"], "viewer": ["hr.attendance.read"]}
 ADMIN_PERMS = {p for p in PERMISSIONS if p.startswith("admin.")}
 BUILTIN_PROFILES = {
     "administrator": ("Administrator", sorted(PERMISSIONS)),
-    "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]),
-    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read"]),
+    "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run",
+                                 "hr.attendance.read", "hr.attendance.upload"]),
+    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read"]),
     "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read"]),
 }
 ITERATIONS = 600_000

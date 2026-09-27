@@ -9,13 +9,19 @@ written next to it · **Planned** = designed, no code · **Design only** = archi
 
 ## Current stage
 
-**Phase 3 has not started.** Stage 3.0 is the documentation gate: HR-System gets the same continuity memory as GMES,
-BAMS and 3D-Modeling (`HISTORY.md`, this file, `docs/LESSONS.md`, `AGENT_HANDOFF.md`, the agent skill
-`.claude/skills/hr-development/SKILL.md`) and a test that keeps them honest (`TEST_DOCS_CURRENT.py`).
+**Phase 2.5 — HR-System as one installable product** (`docs/HR_DELIVERY.md`). Phase 3 (shifts) waits until this
+gate is closed. Stage 3.0 (the continuity documents and their guard) is done and merged.
 
-**Finish line of stage 3.0:** the four documents exist and agree with the code; old "attendance only" documents are
-marked historical, not deleted; `TEST_DOCS_CURRENT.py` runs in CI and its planted bugs are caught; every HR test,
-every planted bug and GMES's real HR end-to-end test pass; pushed as its own change. Only then phase 3 begins.
+**Exit gate of phase 2.5:** installed from scratch on a clean Windows without Python and without internet; first
+administrator and sign-in; employee register; permissions; attendance with the same numbers; backup, rehearsal and
+restore; a restart loses nothing; an update over an installed version keeps data, accounts and journal; a failure
+and a power cut in the middle of an update are survived; every HR test and planted bug; GMES's real HR end-to-end
+test against the new commit.
+
+**Where it stands:** everything above is built and passes on Linux (`TEST_HR_DELIVERY.py`, 69 checks) and, for the
+installed program, in the CI job `windows-installer` (`tools/installed_acceptance.py`: Python hidden from the
+program, outbound network blocked). Still owed before the gate closes: the owner's clean-PC run in Windows Sandbox
+(`installer/clean-pc-test.wsb`, `docs/HR_DELIVERY.md` §5), because the CI machine has Python installed.
 
 ## Built and tested
 
@@ -30,18 +36,26 @@ every planted bug and GMES's real HR end-to-end test pass; pushed as its own cha
 | Ecosystem publisher: `eco.employee.v1` (from the registry) and `eco.attendance_day.v1`, outbox, retry with the same stored bytes, no duplicates; disabled without `ECO_GMES_URL` | `eco_publisher.py`, `eco_contract.py`, `eco_schemas/` | `TEST_ECO_PUBLISHER.py` (9), GMES `hr-e2e` against this repository |
 | Module and edition map (`kernel`, `attendance`, `leave` built) | `hr_core/modules.py` | `TEST_HR_REGISTRY.py` |
 | Documentation guard | `TEST_DOCS_CURRENT.py` | itself, and its planted bugs in `migration/mutations.py` |
+| One product (phase 2.5): one server, one port, one sign-in; screens for employees and organisation, attendance, users and permissions, backups, system health, settings; English and Arabic dictionaries with the same keys | `hr_main.py`, `hr_core/app.py`, `hr_core/web.py`, `hr_core/web/`, `hr_core/api.py` | `TEST_HR_DELIVERY.py` |
+| The locked attendance engine behind the same sign-in (`hr.attendance.read` / `hr.attendance.upload`), same golden numbers, uploads audited | `hr_core/attendance.py` | `TEST_HR_DELIVERY.py` |
+| Installation home outside the program, company identity from its owner (Mizan) or local and provisional, never changed silently | `hr_core/home.py`, `hr_core/registry.py` | `TEST_HR_DELIVERY.py` |
+| Data versions: verified pre-update backup kept forever, step-by-step update, put back on failure, resume after a power cut, newer data refused; one known-good recovery installer with its SHA-256 | `hr_core/upgrade.py`, `hr_core/version.py` | `TEST_HR_DELIVERY.py` |
+| Backups carry the attendance history (copied while no upload runs); a lost history comes back from a backup | `hr_core/backup.py` | `TEST_HR_DELIVERY.py` |
+| Windows installer: compiled program with its own runtime and `cryptography`, data in `%ProgramData%\HR-System`, start with Windows by default, old attendance data copied on first install, Excel detected | `tools/build_windows.py`, `installer/hr-system.iss` | CI `windows-installer` (`tools/installed_acceptance.py`) |
 
 ## Partially built
 
 | What | What exists | What is missing |
 |---|---|---|
-| Delivery to a customer | `BUILD_PROJECT.py` builds a ZIP of the attendance application (`START.bat`) | The ZIP does **not** contain `hr_core/`, `hr_server.py` or `eco_publisher.py`: the registry, accounts, backups and publisher are not installable by a customer yet (needs a decision first) |
-| HR server | JSON API (`hr_core/api.py`) with every route below | No screens: registry and administration are used through the API and the command line only |
+| Delivery to a customer | The Windows installer (phase 2.5) installs the whole product; `BUILD_PROJECT.py` still builds the old attendance ZIP as the engine's rollback line | A run on a truly clean PC (Windows Sandbox, `docs/HR_DELIVERY.md` §5); a code-signing certificate before selling (Windows shows "unknown publisher") |
+| Screens | Every phase-1/2 capability has a screen, in English and Arabic | The attendance dashboard is the locked engine's own page (English only); importing workbooks is still a command (`hr_registry.py import`) |
+| Company identity | From Mizan at setup, or local and provisional | The adoption step (a local id later matched to Mizan's) is planned, not built |
+| Eco publisher in the product | Built and tested (`eco_publisher.py`) and compiled into the program | Not started by the installed program yet (no screen to configure `ECO_GMES_URL`) |
 | Leave | Linked to attendance days at import | Leave requests, approval and balances as an HR module |
 | Attendance ↔ official employee | Attendance is enriched from the **uploaded** employee file | Binding to the registry employee (phase 4) |
 | LAN use | `hr_server.py serve --host` | No TLS yet (BAMS's pinned-certificate pattern is the plan, `docs/HR_SECURITY.md` §4) |
-| Windows | CI runs every Python test on Windows (red on every run until 2026-09-27, see `HISTORY.md`) | `START.bat` and the protected-workbook Excel path never run on a real target PC |
-| Signing library | `cryptography` when it works, BAMS's vendored file otherwise (ADR-HR-002) | Bundling `cryptography` needs an embedded Python runtime in the installer |
+| Windows | CI runs every Python test on Windows and accepts the installed program | The protected-workbook Excel path never ran on a PC with Excel |
+| Signing library | `cryptography` bundled in the installed program; BAMS's vendored file remains the fallback for source checkouts (ADR-HR-002) | — |
 
 ## Planned
 
@@ -53,6 +67,7 @@ every planted bug and GMES's real HR end-to-end test pass; pushed as its own cha
 | `skills` — skills, certification, station and equipment qualification, contract for GMES | 5 |
 | `training` — courses and completions that grant skills | 5 |
 | Personal data (identity, contacts, dependants) behind encryption and permissions | after 5 |
+| Company identity adoption: a provisional local id matched to Mizan's, explicitly | when a customer needs it |
 
 ## Design only
 
@@ -89,14 +104,16 @@ python TEST_MIGRATION_EQUIVALENCE.py    0 differences
 python TEST_ECO_PUBLISHER.py
 python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py
+python TEST_HR_DELIVERY.py
 python TEST_DOCS_CURRENT.py
 python migration/mutations.py           every planted bug caught
 python BUILD_PROJECT.py
 ```
+On Windows (CI job `windows-installer`): `python tools/build_windows.py`, then `python tools/installed_acceptance.py`.
 Then, in a GMES checkout: `sh scripts/fetch-hr.sh`, `ECO_E2E_REQUIRED=1 npm test`, `node scripts/mutations.mjs`.
 
-**Last full run (2026-09-27, this stage):** every test above passes; 41 of 41 planted bugs caught; GMES against this
-repository: 15 + 29 + 10 tests pass, every GMES planted bug caught.
+**Last full run (2026-09-27, phase 2.5):** every test above passes on Linux; 55 of 55 planted bugs caught; GMES against
+this repository: 15 + 29 + 10 tests pass, every GMES planted bug caught. The Windows installer job: see the pull request.
 
 ## Architecture inventory (checked by `TEST_DOCS_CURRENT.py`)
 
@@ -104,17 +121,18 @@ Change this block only after the documents above describe the change. `phase` is
 open; `stage` is the step inside it; `updated` is the date of the session that last changed this file.
 
 ```inventory
-phase: 3
-stage: 3.0 documentation gate
+phase: 2.5
+stage: 2.5 one installable product
 updated: 2026-09-27
 done_phases: 1 2
-hr_core: api auth backup canonical device importer journal modules registry service signing
-root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_registry hr_server
-root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
+hr_core: api app attendance auth backup canonical device home importer journal modules registry service signing upgrade version web
+root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_main hr_registry hr_server
+root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
 contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1
 entities: org_unit job position employee
 permissions: hr.org.read hr.org.write hr.employees.read hr.employees.write hr.employees.delete hr.recycle.restore hr.import.run
 permissions: admin.users.manage admin.audit.read admin.backup.manage admin.backup.restore admin.system.read
+permissions: hr.attendance.read hr.attendance.upload admin.settings.manage
 module: kernel built
 module: attendance built
 module: leave built
@@ -133,6 +151,11 @@ command: hr_registry import
 command: hr_registry list
 command: hr_registry verify
 command: hr_registry rebuild
+command: hr_main data-version
+command: hr_main recovery
+command: hr_main backup
+command: hr_main backups
+command: hr_main rehearse
 route: POST /api/setup
 route: POST /api/login
 route: POST /api/logout
@@ -154,5 +177,8 @@ route: GET /api/admin/health
 route: GET /api/admin/backups
 route: POST /api/admin/backups
 route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
-mutations: 41
+route: GET /api/info
+route: GET /api/admin/settings
+route: PUT /api/admin/settings
+mutations: 55
 ```

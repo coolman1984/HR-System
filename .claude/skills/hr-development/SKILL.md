@@ -8,19 +8,19 @@ description: Working knowledge for HR-System, the ecosystem's owner of people - 
 `CLAUDE.md` is the rules. `AGENT_HANDOFF.md` and `STATUS.md` say where the work stands. This skill is the map.
 The root `SKILL.md` describes only the migrated Excel attendance engine (it ships inside the customer ZIP).
 
-## Two layers, side by side
+## One product, two layers inside it
 ```
- Excel uploads ─► engine.py + calculation_engine.py + dashboard.html   (LOCKED: LOCKED_CORE.json, PROJECT.json)
-                  data/history.db        START.bat, port chosen at start ─ the customer ZIP (BUILD_PROJECT.py)
-                          │ engine.current_rows()  (read only)
-                          ▼
- hr_core/ (kernel)  registry ── journal (signed, append-only) ── auth ── service.require() ── api ── hr_server.py
-                    data/hr.db  data/hr_journal.db  data/auth.db  data/node/ (device key, never backed up)
-                          │
-                    eco_publisher.py ─► data/eco_outbox.db ─► GMES /eco/v1/inbox   (off without ECO_GMES_URL)
+ Browser ─► HR-System.exe (hr_main.py) ─► one ThreadingHTTPServer (hr_core/app.py Product)
+             │ screens hr_core/web/ (EN/AR)        │ /api/...  HR API (hr_core/api.py → service.require → audit)
+             │ /attendance + the engine's 9 addresses ─► locked engine.py / calculation_engine.py (its own handler)
+             ▼
+ %ProgramData%\HR-System (HR_HOME in tests):  config.json · data\ (hr_journal.db, hr.db, auth.db, history.db, node\)
+                                              backups\ (keep-* kept forever) · recovery\known-good · logs\
 ```
-The layers never write into each other. Phase 4 binds attendance to the registry; until then attendance is enriched
-from the uploaded employee file.
+Startup order (hr_core/app.py): recover a lost history.db → `upgrade.prepare` (pre-update backup, steps, put back on
+failure, resume after power cut) → bind the engine → verify journal and audit → promote the recovery installer →
+automatic backups. Until the company is set, the server runs in setup mode (hr_core/web.py).
+The eco publisher is compiled in but not started by the product yet; phase 4 binds attendance to the registry.
 
 ## File map
 | Path | Role | Change rule |
@@ -34,6 +34,13 @@ from the uploaded employee file.
 | `hr_core/api.py`, `hr_server.py` | JSON HTTP API and admin commands | Same-origin JSON mutations only |
 | `hr_core/device.py`, `hr_core/backup.py` | Device identity, verified backups, rehearsal, restore | Restore = compensating line |
 | `hr_core/modules.py` | Modules and editions (`built` / `planned` / `design_only`) | Change a status only with the code and `STATUS.md` |
+| `hr_main.py`, `hr_core/app.py` | The product's one entry point and startup order | One server only; `tool <command>` for maintenance |
+| `hr_core/home.py`, `hr_core/version.py` | Installation home, settings, company identity; product and data versions | The company id is set once (ADR-HR-006) |
+| `hr_core/upgrade.py` | Data-version steps, pre-update backup, put back, resume; recovery installer | A new data shape = a new step + a planted bug |
+| `hr_core/attendance.py` | The engine behind the sign-in, its rights, Excel detection | Never edit the engine to change this |
+| `hr_core/web.py`, `hr_core/web/` | Screens (one page, plain JS), `hr_core/web/i18n/en.json` + `hr_core/web/i18n/ar.json`, setup mode | Every text through `t()`; both dictionaries, same keys |
+| `tools/build_windows.py`, `tools/make_assets.py`, `tools/make_icon.py`, `installer/hr-system.iss` | The Windows installer | CI job `windows-installer` must stay green |
+| `tools/installed_acceptance.py` | Acceptance of the installed program (Windows) | Python hidden, network blocked |
 | `hr_core/vendor/` | BAMS Ed25519, byte-for-byte, hash-pinned | Never edited here |
 | `eco_publisher.py`, `eco_contract.py`, `eco_schemas/` | Contracts to GMES; schemas generated in GMES | Schemas copied unchanged |
 | `migration/` | Golden behaviour and planted bugs (`migration/mutations.py`) | A new rule = a new planted bug |
@@ -44,6 +51,11 @@ from the uploaded employee file.
   registry, written through the journal → permissions in `hr_core/auth.py` → service methods with `require()` → API
   routes → tests + planted bugs → status `built` in `hr_core/modules.py` → `STATUS.md` (labels and inventory),
   `AGENT_HANDOFF.md`, `HISTORY.md`, `docs/LESSONS.md`.
+- **A new screen or text:** add the key to `hr_core/web/i18n/en.json` AND `hr_core/web/i18n/ar.json` (TEST_HR_DELIVERY checks both);
+  write server values with `textContent` only; look at it in a real browser (screenshots) in both languages.
+- **The data changes shape:** raise `DATA_VERSION` in `hr_core/version.py`, add the step to `MIGRATIONS` in
+  `hr_core/upgrade.py` (check what is already done first; write journal lines as actor `upgrade`), test failure and
+  power cut, add a planted bug.
 - **New or changed contract:** in `GMES/packages/eco-contracts` first (additive = same version, breaking = new `vN`),
   regenerate there, copy into `eco_schemas/`, extend `eco_publisher.py`, re-pin GMES and pass its HR end-to-end test.
 - **A document check fails:** read the message, find what changed, describe it in the documents, then update the
@@ -53,7 +65,7 @@ from the uploaded employee file.
 - `TEST_HR_FOUNDATION.py` rewrites a tracked sample: `git checkout -- sample/` afterwards.
 - The original tests need `PYTHONPATH=vendor.zip` for `openpyxl`.
 - A broken `cryptography` can panic with a `BaseException`; `hr_core/signing.py` handles it — keep that.
-- The customer ZIP has an explicit file list; new files are not delivered until listed (and the owner decides the
-  installer shape).
-- The HR server has no screens yet; the attendance dashboard is a different program on a different port.
+- The product is the Windows installer; the old ZIP (`BUILD_PROJECT.py`) is only the engine's rollback line.
+- The engine binds to one data folder per process (on first import): tests that need two folders use subprocesses.
+- The engine keeps `history.db` open: copy it with the SQLite backup API under the attendance lock, never as a file.
 - More: `docs/LESSONS.md`.

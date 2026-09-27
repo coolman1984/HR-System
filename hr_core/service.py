@@ -21,7 +21,7 @@ READ_PERM = {"org_unit": "hr.org.read", "job": "hr.org.read", "position": "hr.or
 
 class HRService:
     def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company",
-                 backup_dir=None, extra_backup_dirs=(), keep=14, allow_new_journal=False):
+                 backup_dir=None, extra_backup_dirs=(), keep=14, allow_new_journal=False, attachments=()):
         self.data_dir = data_dir
         os.makedirs(data_dir, exist_ok=True)
         backup_dir = backup_dir or os.path.join(data_dir, "backups")
@@ -36,7 +36,7 @@ class HRService:
         self.journal = Journal(data_dir, self.device)
         self.registry = Registry(data_dir, company_id, company_code, company_name, journal=self.journal)
         self.auth = Auth(data_dir, self.journal)
-        self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep)
+        self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep, attachments)
         self.journal.audit("system", "service.started", "system", {
             "device": self.device.device_id, "signing_backend": signing.BACKEND,
             "cloned_from": self.device.cloned_from, "journal_restored_from": restored_from})

@@ -4,7 +4,8 @@ HR-System is the ecosystem's **only source of truth for people**. Built today: t
 organisation (company → site → business unit → department → section, jobs, positions — `hr_core/`), and the
 migrated attendance application with roster and leave linking (locked engine), and (phase 2) users, profiles and
 server-side permissions, device identity, a signed append-only journal and audit, verified automatic backups with a
-restore rehearsal (`docs/HR_SECURITY.md`). **Planned, not built:** independent
+restore rehearsal (`docs/HR_SECURITY.md`), and (phase 2.5) one installable product: a Windows installer, one server and
+one sign-in, screens in English and Arabic, safe data-version updates (`docs/HR_DELIVERY.md`). **Planned, not built:** independent
 shifts/rosters/assignments, overtime, skills/training/station qualification. **Design only:** payroll calculation
 (Mizan books the entries; it never stores employees or computes pay). Other applications (GMES, Mizan, Space Planner)
 keep read-only mirrors and reference employees by the shared id `UUIDv5(company, "hr:employee:<Employee_ID>")`.
@@ -30,6 +31,9 @@ design only, checked against the code), the top of `HISTORY.md` and `docs/LESSON
 - An outdated document is marked HISTORICAL at its top with a pointer to `STATUS.md`; it is not deleted.
 
 ## Never
+- Ship a feature only in the source tree: it must reach the installed program (installer job green), in both languages.
+- Change the shape of the data without a `DATA_VERSION` step in `hr_core/upgrade.py` (pre-update backup, put back, resume).
+- Invent or edit the company id: it comes from its owner (Mizan) or is local and provisional, set once (ADR-HR-006).
 - Change behaviour during migration or "clean-up". Behaviour changes need a decision in PROJECT_LOG.md and a test
   that first reproduces the old behaviour. `TEST_MIGRATION_EQUIVALENCE.py` must stay at 0 differences unless the
   golden file is deliberately regenerated in the same commit, with the reason.
@@ -62,6 +66,7 @@ python TEST_MIGRATION_EQUIVALENCE.py
 python TEST_ECO_PUBLISHER.py
 python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py         phase-2 exit gate (HR_REQUIRE_CROSSCHECK=1 with `cryptography` installed: CI does)
+python TEST_HR_DELIVERY.py          phase 2.5: one product, updates, failures, power cut, recovery installer, languages
 python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py

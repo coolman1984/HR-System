@@ -1,0 +1,16 @@
+<Configuration>
+  <!-- A clean Windows with no Python and no network, for the once-per-release clean-PC test (docs/HR_DELIVERY.md §5).
+       Change HostFolder to where this repository is on your PC (Windows Sandbox needs a full path). It is mapped
+       read-only; install dist\HR-System-Setup-*.exe from C:\HR-System-repo\dist. -->
+  <Networking>Disable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\YOU\Documents\HR-System</HostFolder>
+      <SandboxFolder>C:\HR-System-repo</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>explorer.exe C:\HR-System-repo\dist</Command>
+  </LogonCommand>
+</Configuration>

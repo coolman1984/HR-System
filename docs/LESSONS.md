@@ -30,6 +30,18 @@ or from the owner. Add a line when something surprises you; never delete one, st
   (`SharedConnection`); an intermittent 500 was a race, found by recording the file and line in the audit.
 - **L26** Hash-pinned files need byte-identical checkouts: `.gitattributes` `* -text` (Windows CRLF broke the pin).
 
+- **L27** Look at the screens in a real browser before calling them done (white-on-white buttons passed every API test).
+- **L28** A fixture or repair that writes tables without a journal line is corruption; the rehearsal refuses it, rightly.
+
+## Delivery (phase 2.5)
+- **L29** Built and tested is not delivered: every feature must land in the program a customer installs, and CI
+  must accept the INSTALLED program, with Python hidden and the network blocked.
+- **L30** Program and data apart: updating or removing the program never touches `%ProgramData%\HR-System`.
+- **L31** Before data changes shape: a verified, rehearsed backup kept forever; steps that check what is done; put
+  back only when nobody but the update wrote since the backup.
+- **L32** The company id is everyone's namespace: it comes from its owner, and a registry refuses another one.
+- **L33** Values in signed canonical documents must fit their rules (integers up to 2^53: nanoseconds do not).
+
 ## Dependencies
 - **L13** Probe an optional native library by what it does, not by whether it imports: a broken `cryptography`
   panicked with a `BaseException`.

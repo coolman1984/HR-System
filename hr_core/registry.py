@@ -73,7 +73,13 @@ class Registry:
         self.recover()
         # Only when there is no company yet: a second opener that does not know the code (the publisher) must not
         # create a second "COMPANY" (found in phase 2; see PROJECT_LOG.md).
-        if not self.db.execute("SELECT 1 FROM org_unit WHERE type = 'company'").fetchone():
+        company = self.db.execute("SELECT id, code FROM org_unit WHERE type = 'company' ORDER BY created_at LIMIT 1").fetchone()
+        if company and company["id"] != self.gid("org_unit", company["code"], "company"):
+            # every shared id is derived from the company id: opening these records under another company would give
+            # every employee a new identity in every other application (ADR-HR-006)
+            raise RegistryError("company.mismatch", "these HR records belong to another company id; the company identity "
+                                "never changes silently (adopting an owner's identity is an explicit step)")
+        if not company:
             self.commit("system", "Company created", [self.op_put("org_unit", company_code, {"type": "company", "name": company_name, "parent_id": None, "attrs": {}})])
 
     # ------------------------------------------------------------------ schema

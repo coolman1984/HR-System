@@ -8,3 +8,7 @@ quarantine/
 data/
 uploads/
 *.zip.tmp
+hr-home/
+hr_core/_assets.py
+build/
+dist/

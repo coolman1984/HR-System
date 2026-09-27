@@ -5,6 +5,7 @@ A backup is a folder  <dest>/hr-<UTC time>-<n>/  holding consistent online copie
   auth.db        users and profiles (sessions, failed-login counters and lockouts are stripped)
   hr_journal.db  the permanent signed journal and the audit log
   device.json    this installation's PUBLIC identity (the private device.key is never in a backup)
+  history.db     (phase 2.5) the attendance application's history, copied while no upload runs
   manifest.json  SHA-256 and size of every file, the journal's length and last hash, the registry fingerprint,
                  signed by this installation's device.
 
@@ -33,6 +34,7 @@ from .canonical import canonical
 from .journal import Journal, now
 
 FILES = ("hr.db", "auth.db", "hr_journal.db")
+KEEP = "keep-"  # name prefix of the backups kept forever (taken before an update)
 FORMAT = "hr-backup-1"
 
 
@@ -73,6 +75,12 @@ def _copy_db(src_path, dest_path):
         src.close()
 
 
+def _state(path):
+    """What tells an attachment changed since the last backup (its copy in a backup is not byte-identical)."""
+    st = os.stat(path)
+    return [str(st.st_mtime_ns), st.st_size]  # a string: nanoseconds exceed the integers canonical JSON carries exactly
+
+
 def _manifest_digest(manifest):
     body = {k: v for k, v in manifest.items() if k != "signature"}
     return hashlib.sha256(canonical(body).encode("utf-8")).digest()
@@ -87,8 +95,11 @@ def local_path_problem(path):
 
 
 class Backups:
-    def __init__(self, data_dir, journal, registry, auth, dest=None, extra=(), keep=14):
+    def __init__(self, data_dir, journal, registry, auth, dest=None, extra=(), keep=14, attachments=()):
+        """`attachments`: other databases of this installation that are not folds of the journal (the attendance
+        history), each (file name, path, lock). Each is copied while its lock is held, so no upload is half in it."""
         self.data_dir, self.journal, self.registry, self.auth = data_dir, journal, registry, auth
+        self.attachments = list(attachments)
         self.dest = dest or os.path.join(data_dir, "backups")
         self.extra = list(extra)
         for d in [self.dest] + self.extra:
@@ -104,10 +115,11 @@ class Backups:
         with self.lock:
             os.makedirs(self.dest, exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            n, name = 1, f"hr-{stamp}-1"
+            prefix = KEEP if reason == "pre-update" else "hr-"  # pre-update backups are never removed by retention
+            n, name = 1, f"{prefix}{stamp}-1"
             while os.path.exists(os.path.join(self.dest, name)):
                 n += 1
-                name = f"hr-{stamp}-{n}"
+                name = f"{prefix}{stamp}-{n}"
             work = os.path.join(self.dest, "." + name + ".partial")
             os.makedirs(work)
             try:
@@ -118,6 +130,12 @@ class Backups:
                     _copy_db(self.journal.path, os.path.join(work, "hr_journal.db"))
                     fingerprint = self.registry.fingerprint()
                     jv = self.journal.verify()
+                    attached = {}
+                    for fname, path, lock in self.attachments:
+                        with lock:
+                            if os.path.isfile(path):
+                                _copy_db(path, os.path.join(work, fname))
+                                attached[fname] = _state(path)
                 a = sqlite3.connect(os.path.join(work, "auth.db"))
                 a.executescript("DELETE FROM session; DELETE FROM failure; VACUUM;")  # live secrets stay home
                 a.close()
@@ -130,7 +148,7 @@ class Backups:
                 manifest = {"format": FORMAT, "name": name, "created_at": now(), "actor": actor, "reason": reason,
                             "company_id": self.registry.company_id, "files": files,
                             "journal": {"lines": jv["lines"], "last_hash": jv["last_hash"], "ok": jv["ok"]},
-                            "registry": {"fingerprint": fingerprint},
+                            "registry": {"fingerprint": fingerprint}, "attachments": attached,
                             "device": device.device_id if device else None, "signing_backend": signing.BACKEND}
                 if device is not None:
                     manifest["signature"] = device.sign(_manifest_digest(manifest)).hex()
@@ -163,7 +181,7 @@ class Backups:
         for d in [self.dest] + self.extra:
             if not os.path.isdir(d):
                 continue
-            names = sorted(n for n in os.listdir(d) if n.startswith("hr-") and os.path.isdir(os.path.join(d, n)))
+            names = sorted(n for n in os.listdir(d) if n.startswith("hr-") and os.path.isdir(os.path.join(d, n)))  # never KEEP
             for old in names[:-self.keep] if self.keep else []:
                 shutil.rmtree(os.path.join(d, old), ignore_errors=True)
 
@@ -181,11 +199,12 @@ class Backups:
         if os.path.isdir(self.dest):
             for n in sorted(os.listdir(self.dest), reverse=True):
                 mf = os.path.join(self.dest, n, "manifest.json")
-                if n.startswith("hr-") and os.path.isfile(mf):
+                if n.startswith(("hr-", KEEP)) and os.path.isfile(mf):
                     m = json.load(open(mf, encoding="utf-8"))
                     reh = os.path.join(self.dest, n, "rehearsal.json")
                     out.append({"name": n, "created_at": m["created_at"], "reason": m["reason"], "actor": m["actor"],
-                                "journal_lines": m["journal"]["lines"],
+                                "journal_lines": m["journal"]["lines"], "kept_forever": n.startswith(KEEP),
+                                "attachments": sorted(m.get("attachments", {})),
                                 "rehearsal": json.load(open(reh, encoding="utf-8")) if os.path.isfile(reh) else None})
         return out
 
@@ -325,7 +344,8 @@ class Backups:
         current = self.journal.verify()["last_hash"]
         if last:
             m = json.load(open(os.path.join(self.dest, last["name"], "manifest.json"), encoding="utf-8"))
-            if m["journal"]["last_hash"] == current and last["rehearsal"] and last["rehearsal"]["ok"]:
+            unchanged = all(m.get("attachments", {}).get(f) == (_state(p) if os.path.isfile(p) else None) for f, p, _ in self.attachments)
+            if m["journal"]["last_hash"] == current and unchanged and last["rehearsal"] and last["rehearsal"]["ok"]:
                 return None
         made = self.create(actor, "automatic")
         made["rehearsal"] = self.rehearse(made["path"], actor)
@@ -359,9 +379,29 @@ def recover_lost_journal(data_dir, backup_dirs):
     candidates = []
     for d in backup_dirs:
         if os.path.isdir(d):
-            candidates += [os.path.join(d, n) for n in os.listdir(d) if n.startswith("hr-")]
-    for path in sorted(candidates, key=os.path.basename, reverse=True):
+            candidates += [os.path.join(d, n) for n in os.listdir(d) if n.startswith(("hr-", KEEP))]
+    for path in sorted(candidates, key=_age, reverse=True):
         if Backups.verify(path)["ok"]:
             shutil.copy2(os.path.join(path, "hr_journal.db"), os.path.join(data_dir, "hr_journal.db"))
             return os.path.basename(path)
     return None
+
+
+def recover_lost_attachment(data_dir, backup_dirs, fname):
+    """An attachment (the attendance history) is gone: put back the newest verified backup's copy. It is not a
+    fold of the journal, so this is the only way back; the caller audits it. None when no backup holds it."""
+    candidates = []
+    for d in backup_dirs:
+        if os.path.isdir(d):
+            candidates += [os.path.join(d, n) for n in os.listdir(d) if n.startswith(("hr-", KEEP))]
+    for path in sorted(candidates, key=_age, reverse=True):
+        if os.path.isfile(os.path.join(path, fname)) and Backups.verify(path)["ok"]:
+            shutil.copy2(os.path.join(path, fname), os.path.join(data_dir, fname))
+            return os.path.basename(path)
+    return None
+
+
+def _age(path):
+    """Newest first across both name forms: the time stamp follows the prefix."""
+    name = os.path.basename(path)
+    return name[len(KEEP):] if name.startswith(KEEP) else name[len("hr-"):]

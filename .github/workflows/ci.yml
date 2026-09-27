@@ -28,6 +28,7 @@ jobs:
       - run: python TEST_ECO_PUBLISHER.py
       - run: python TEST_HR_REGISTRY.py
       - run: python TEST_HR_SECURITY.py
+      - run: python TEST_HR_DELIVERY.py
       - run: python TEST_DOCS_CURRENT.py
       - run: python migration/mutations.py
       - run: python BUILD_PROJECT.py
@@ -52,3 +53,31 @@ jobs:
       - run: python TEST_HR_SECURITY.py
         env:
           HR_SIGNING_BACKEND: bams
+  windows-installer:
+    # phase 2.5 (docs/HR_DELIVERY.md): build HR-System-Setup.exe and accept the INSTALLED program -
+    # no Python visible to it, outbound network blocked, install / update / failed update / power cut / removal.
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nuitka>=2.4,<3" ordered-set zstandard cryptography
+          choco upgrade innosetup -y --no-progress
+      - name: Build HR-System.exe and the installer
+        run: python tools/build_windows.py
+      - name: Accept the installed program
+        run: python tools/installed_acceptance.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: HR-System-Setup
+          path: dist/HR-System-Setup-*.exe
+          retention-days: 30

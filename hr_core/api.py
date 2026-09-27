@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .auth import AuthError
 from .backup import BackupError
+from .home import HomeError
 from .registry import Conflict, RegistryError
 
 MAX_BODY = 1 << 20
@@ -31,8 +32,12 @@ class HttpError(Exception):
         self.status, self.code = status, code
 
 
-def make_handler(service):
+def make_handler(service, product=None):
+    """`product` (hr_core.app.Product) adds the screens, the attendance application behind the same sign-in, the
+    settings and the product's own health; without it this is the phase-2 API alone (tests, the CLI server)."""
     routes = []
+    attendance = product.attendance if product is not None else None
+    base = attendance.engine.Handler if attendance is not None else BaseHTTPRequestHandler
 
     def route(method, pattern):
         def deco(fn):
@@ -127,7 +132,29 @@ def make_handler(service):
 
     @route("GET", "/api/admin/health")
     def health(h, body, user):
-        return 200, service.health(user, h.ip)
+        out = service.health(user, h.ip)
+        if product is not None:
+            out.update(product.health_extra())
+        return 200, out
+
+    # -------------------------------------------------------------- the product (phase 2.5)
+    if product is not None:
+        @route("GET", "/api/info")
+        def info(h, body, user):
+            return 200, product.info(h.client_address[0] in LOCAL)
+
+        @route("GET", "/api/admin/settings")
+        def settings(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "settings")
+            return 200, product.settings()
+
+        @route("PUT", "/api/admin/settings")
+        def settings_put(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "settings")
+            changes = {k: body[k] for k in ("autostart", "language", "backup_hours") if k in body}
+            product.home.set(**changes)
+            service.journal.audit("security", "settings.changed", user["code"], changes, h.ip)
+            return 200, product.settings()
 
     @route("GET", "/api/admin/backups")
     def backups(h, body, user):
@@ -143,7 +170,7 @@ def make_handler(service):
         out = fn(user, name, h.ip)
         return 200, out if isinstance(out, dict) else {"seq": out}
 
-    class Handler(BaseHTTPRequestHandler):
+    class Handler(base):
         server_version = "HR-System"
         sys_version = ""
 
@@ -161,6 +188,9 @@ def make_handler(service):
                     origin = self.headers.get("Origin")
                     if origin and urlparse(origin).netloc != self.headers.get("Host"):
                         raise HttpError(403, "origin.refused", "cross-site request refused")
+                if product is not None and self._product(method, url):
+                    return
+                if method != "GET":
                     length = int(self.headers.get("Content-Length") or 0)
                     if length > MAX_BODY:
                         raise HttpError(413, "body.too_large", "request too large")
@@ -190,6 +220,8 @@ def make_handler(service):
                 self._send(404 if exc.code.endswith("not_found") else 400, {"error": exc.code, "message": str(exc)})
             except BackupError as exc:
                 self._send(400, {"error": "backup", "message": str(exc)})
+            except HomeError as exc:
+                self._send(400, {"error": exc.code, "message": str(exc)})
             except (ValueError, KeyError, TypeError) as exc:
                 try:  # usually a malformed request; recorded with its place so a server-side bug shows up too
                     where = traceback.extract_tb(exc.__traceback__)[-1]
@@ -206,6 +238,44 @@ def make_handler(service):
                 except Exception:
                     pass
                 self._send(500, {"error": "server", "message": "internal error (recorded in the audit log)"})
+
+        def _product(self, method, url):
+            """The screens and the attendance application. True when this request was answered here."""
+            from .web import send_asset, static_name
+            if method == "GET":
+                name = static_name(url.path)
+                if name is not None:
+                    if send_asset(self, name):
+                        return True
+                    raise HttpError(404, "not_found", "no such address")
+                if url.path in ("/attendance", "/attendance/"):
+                    user = service.session(self.token) if self.token else None
+                    if user is None:  # a page, not an API: send the person to the sign-in screen
+                        self.send_response(302)
+                        self.send_header("Location", "/#/login?next=attendance")
+                        self.end_headers()
+                        return True
+                    service.require(user, "hr.attendance.read", self.ip, "attendance")
+                    body = attendance.dashboard()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Frame-Options", "SAMEORIGIN")
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return True
+            right = attendance.route(method, url.path)
+            if right is None:
+                return False
+            user = service.session(self.token) if self.token else None
+            service.require(user, right, self.ip, f"attendance:{url.path}")
+            with attendance.lock:  # the locked engine answers its own address, as it always did
+                (attendance.engine.Handler.do_GET if method == "GET" else attendance.engine.Handler.do_POST)(self)
+            from .attendance import CHANGES
+            if url.path in CHANGES:
+                service.journal.audit("activity", CHANGES[url.path], user["code"], {"path": url.path}, self.ip)
+            return True
 
         def _send(self, status, payload):
             data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")

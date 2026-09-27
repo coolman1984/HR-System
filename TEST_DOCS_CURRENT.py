@@ -108,9 +108,9 @@ results["history_is_current_and_complete"] = True
 design = read("docs/HR_SYSTEM_DESIGN.md")
 assert "\n## 7. " in design, "docs/HR_SYSTEM_DESIGN.md lost its §7 phase plan"
 design = design[design.index("\n## 7. "):]
-done_in_design = re.findall(r"^\| \*\*(\d+) \(منفذة\)\*\* \|", design, re.M)
+done_in_design = re.findall(r"^\| \*\*([\d.]+) \(منفذة\)\*\* \|", design, re.M)
 same("phases done in docs/HR_SYSTEM_DESIGN.md §7", words(STATUS, "done_phases", "STATUS.md"), done_in_design)
-planned = re.findall(r"^\| (\d+) \|", design, re.M)
+planned = re.findall(r"^\| ([\d.]+) \|", design, re.M)
 assert planned and one(STATUS, "phase", "STATUS.md") == planned[0], \
     f"STATUS.md phase {STATUS['phase']} is not the first phase the design leaves open ({planned[:1]})"
 results["phase_matches_the_plan"] = True
@@ -129,7 +129,7 @@ same("permissions (hr_core/auth.py PERMISSIONS)", words(STATUS, "permissions", "
 same("HTTP routes (hr_core/api.py)", STATUS.get("route", []),
      [f"{m} {p}" for m, p in re.findall(r'@route\("(\w+)", "([^"]+)"\)', read("hr_core/api.py"))])
 same("commands", STATUS.get("command", []),
-     [f"{f[:-3]} {c}" for f in ("hr_server.py", "hr_registry.py") for c in re.findall(r'cmd == "([\w-]+)"', read(f))])
+     [f"{f[:-3]} {c}" for f in ("hr_server.py", "hr_registry.py", "hr_main.py") for c in re.findall(r'cmd == "([\w-]+)"', read(f))])
 from hr_core.modules import MODULES  # noqa: E402
 same("module statuses (hr_core/modules.py)", STATUS.get("module", []), [f"{m} {s['status']}" for m, s in MODULES.items()])
 mutations = [n for n in ast.walk(ast.parse(read("migration/mutations.py")))

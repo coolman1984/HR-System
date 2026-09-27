@@ -202,7 +202,7 @@ results["editions_resolve_and_payroll_is_design_only"] = True
 
 # 11. The kernel package is standard library only (CHECK_ENVIRONMENT.py only scans top-level files).
 import sys  # noqa: E402
-std = set(sys.stdlib_module_names) | {"hr_core", "calculation_engine", "openpyxl"}
+std = set(sys.stdlib_module_names) | {"hr_core", "calculation_engine", "engine", "openpyxl"}  # engine: the locked attendance application (phase 2.5 serves it)
 for path in (ROOT / "hr_core").rglob("*.py"):
     # The ONE exception: signing.py prefers the standard `cryptography` package when present (optional, guarded).
     allowed = std | ({"cryptography"} if path.name == "signing.py" else set())
