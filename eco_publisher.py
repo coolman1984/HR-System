@@ -63,8 +63,38 @@ def _date(value):
     return text[:10] if text and len(text) >= 10 and text[4] == "-" and text[7] == "-" else None
 
 
-def build_snapshots(rows, company):
+def registry_employees(registry, company):
+    """Employees from the official registry (hr_core, phase 1): the source of truth once it holds anyone.
+    Only employment facts leave HR: no legal name, birth date, identity, pay or contacts."""
+    out = {}
+    for e in registry.list("employee"):
+        body = {"id": hr_id(company, "employee", e["code"]), "code": e["code"], "employment_status": e["employment_status"],
+                "active": e["employment_status"] == "Active", "origin": {"app": "hr", "type": "employee", "key": e["code"]}}
+        if e.get("preferred_name"):
+            body["display_name"] = e["preferred_name"]
+        for field in ("hire_date", "termination_date"):
+            if e.get(field):
+                body[field] = e[field]
+        position = registry.by_id("position", e["position_id"]) if e.get("position_id") else None
+        if position:
+            body["position_code"] = position["code"]
+            unit = registry.by_id("org_unit", position["org_unit_id"])
+            while unit and unit["type"] == "section":
+                unit = registry.by_id("org_unit", unit["parent_id"])
+            if unit and unit["type"] == "department":
+                body["department_code"] = unit["code"]
+        site = registry.by_id("org_unit", e["home_site_id"]) if e.get("home_site_id") else None
+        if site:
+            body["plant_code"] = site["code"]
+        out[("eco.employee.v1", body["id"])] = body
+    return out
+
+
+def build_snapshots(rows, company, registry=None):
     """HR's current rows -> {(type, id): body without version}. Pure; no I/O.
+
+    When the employee registry (hr_core) holds employees, THEY are the published employees; the
+    attendance-derived path below is the pre-registry behaviour, kept as the fallback (rollback line).
 
     Employees come ONLY from rows enriched by an uploaded employee master (employee_employment_status);
     an employee seen in attendance but never confirmed by the master is not published, so other apps
@@ -72,8 +102,13 @@ def build_snapshots(rows, company):
     the row with the latest work date wins, deterministically.
     """
     out, problems = {}, []
+    if registry is not None and registry.list("employee"):
+        out.update(registry_employees(registry, company))
+        rows_for_employees = []
+    else:
+        rows_for_employees = rows
     best = {}
-    for row in rows:
+    for row in rows_for_employees:
         emp = _text(row.get("employee_id"))
         status = _text(row.get("employee_employment_status"))
         if emp and status:
@@ -169,6 +204,7 @@ class Publisher:
         self.source = f"eco://{company}/hr/{node}"
         data_dir = data_dir or os.environ.get("EXCEL_APP_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
         self.outbox = Outbox(os.path.join(data_dir, "eco_outbox.db"))
+        self.registry = None  # set by main() when an employee registry exists (hr_core)
 
     def envelope(self, kind, data):
         subject = f"{kind.split('.')[1]}/{data['id']}"
@@ -181,7 +217,7 @@ class Publisher:
         }
 
     def stage_from(self, rows):
-        snapshots, problems = build_snapshots(rows, self.company)
+        snapshots, problems = build_snapshots(rows, self.company, self.registry)
         staged = 0
         with self.outbox.db:
             for (kind, entity_id), body in sorted(snapshots.items()):
@@ -247,6 +283,10 @@ def main(argv=None):
         return 0
     import engine  # imported only when publishing, so a disabled publisher touches nothing
     publisher = Publisher(os.environ.get("ECO_COMPANY_ID", ""), url, os.environ.get("ECO_GMES_KEY", ""), os.environ.get("ECO_NODE", "hr-main"))
+    data_dir = os.environ.get("EXCEL_APP_DATA_DIR") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    if os.path.exists(os.path.join(data_dir, "hr.db")):  # only read an existing registry; publishing never creates one
+        from hr_core.registry import Registry
+        publisher.registry = Registry(data_dir, publisher.company)
     while True:
         print(json.dumps(publisher.run_once(engine.current_rows(force=True)), ensure_ascii=False))
         sys.stdout.flush()

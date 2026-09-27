@@ -1,10 +1,13 @@
 # HR-System — rules for anyone (human or AI) changing this repository
 
-HR-System is the ecosystem's **authoritative source of workforce truth**: employees and their ids,
-departments, positions, organisation, employment status, shifts, attendance, absence, leave, overtime,
-skills/training, assignments, and payroll CALCULATION data. Other applications (GMES manufacturing, Mizan
-accounting, Space Planner 3D) keep read-only mirrors and reference employees by the shared id
-`UUIDv5(company, "hr:employee:<Employee_ID>")`. BAMS (`Mr.Ayman-HR`) is a different product and stays separate.
+HR-System is the ecosystem's **only source of truth for people**. Built today: the employee registry and the
+organisation (company → site → business unit → department → section, jobs, positions — `hr_core/`), and the
+migrated attendance application with roster and leave linking (locked engine). **Planned, not built:** independent
+shifts/rosters/assignments, overtime, skills/training/station qualification. **Design only:** payroll calculation
+(Mizan books the entries; it never stores employees or computes pay). Other applications (GMES, Mizan, Space Planner)
+keep read-only mirrors and reference employees by the shared id `UUIDv5(company, "hr:employee:<Employee_ID>")`.
+BAMS (`Mr.Ayman-HR`) is a different product; it is the ecosystem's infrastructure REFERENCE, never modified from here.
+Design and plan: `docs/HR_SYSTEM_DESIGN.md`.
 
 Read first: `START_HERE_AI.md` (the original working rules, still valid), `MIGRATION.md`, then
 `project_memory/PROJECT_LOG.md`.
@@ -18,6 +21,8 @@ Read first: `START_HERE_AI.md` (the original working rules, still valid), `MIGRA
 - Publish personal data (birth date, national id, gender, pay, contacts) to another application.
 - Write into another application's database, or accept employee records from another application.
 - Let payroll have two truths: HR calculates pay; Mizan books the entries; neither does the other's job.
+- Build payroll before employees, attendance, leave and overtime are stable (docs/HR_SYSTEM_DESIGN.md §6-7).
+- Touch `engine.py` / `calculation_engine.py` / `dashboard.html` / `PROJECT.json` for new modules: new work goes in `hr_core/` beside them.
 - Edit `eco_schemas/`: they are generated in `coolman1984/GMES/packages/eco-contracts` and copied here unchanged.
 
 ## Tests (all must pass; CI runs them on Linux and Windows)
@@ -31,6 +36,7 @@ python TEST_INT02_ROSTER_LEAVE_LINK.py
 python TEST_INT03_HTTP_MULTI_UPLOAD.py
 python TEST_MIGRATION_EQUIVALENCE.py
 python TEST_ECO_PUBLISHER.py
+python TEST_HR_REGISTRY.py
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py
 ```

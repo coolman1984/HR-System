@@ -120,8 +120,9 @@ not active → `person.inactive`) when `ownership.person = 'hr'`. With `'none'` 
 - Shifts catalogue (`SCH_01_ShiftDefinitions`), skills and station qualifications (`SKL_*`) → contracts for GMES's
   labour module; HR work-center codes ↔ GMES station codes ↔ 3D `meta["eco.ref"]`.
 
-**Next safest step:** give HR its own employee master (import-only, read-mostly), because every later integration
-(payroll, skills, 3D presence) needs employees that exist independently of attendance.
+**Done 2026-09-27 (phase 1 of docs/HR_SYSTEM_DESIGN.md):** HR now has its own employee registry and organisation in
+`hr_core/` (beside the locked engine), and the publisher takes employees from it. **Next safest step:** users,
+permissions, device identity and verified backups (phase 2), before any new domain module.
 
 ## 10. Safety fix made during migration
 The source `.gitignore` did not exclude `data/`. A real installation keeps `data/last_result.json` (the current

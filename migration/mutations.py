@@ -23,6 +23,16 @@ MUTATIONS = [
      '"Employees observed"', '"Employees seen"', "TEST_MIGRATION_EQUIVALENCE.py"),
     ("absence is no longer explicit-only", "PROJECT.json",
      '"Absent"', '"Leave"', "TEST_MIGRATION_EQUIVALENCE.py"),
+    ("registry columns get TEXT affinity (1 becomes '1')", "hr_core/registry.py",
+     'cols = ", ".join(f for f in fields if f not in ("code",))', 'cols = ", ".join(f"{f} TEXT" for f in fields if f not in ("code",))', "TEST_HR_REGISTRY.py"),
+    ("a stale version overwrites a newer one", "hr_core/registry.py",
+     'if op.get("expected_ver") is not None and (not cur or cur["ver"] != op["expected_ver"]):', 'if False:', "TEST_HR_REGISTRY.py"),
+    ("a crash after the commit point is not repaired", "hr_core/registry.py",
+     'done = self.applied_seq()', 'return\n        done = self.applied_seq()', "TEST_HR_REGISTRY.py"),
+    ("summary rows are imported as entities", "hr_core/importer.py",
+     "elif not KEY.match(code):", "elif False:", "TEST_HR_REGISTRY.py"),
+    ("the publisher ignores the registry", "eco_publisher.py",
+     'if registry is not None and registry.list("employee"):', 'if False:', "TEST_HR_REGISTRY.py"),
 ]
 
 survived = 0

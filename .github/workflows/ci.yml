@@ -26,5 +26,6 @@ jobs:
       - run: python TEST_INT03_HTTP_MULTI_UPLOAD.py
       - run: python TEST_MIGRATION_EQUIVALENCE.py
       - run: python TEST_ECO_PUBLISHER.py
+      - run: python TEST_HR_REGISTRY.py
       - run: python migration/mutations.py
       - run: python BUILD_PROJECT.py
