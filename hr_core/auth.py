@@ -17,12 +17,11 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 
 from .canonical import canonical
-from .journal import now
+from .journal import SharedConnection, now
 
 PERMISSIONS = {
     "hr.org.read": "See the organisation, jobs and positions",
@@ -80,8 +79,7 @@ class Auth:
         self.journal = journal
         self.lock = threading.RLock()
         self.path = os.path.join(data_dir, "auth.db")
-        self.db = sqlite3.connect(self.path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        self.db = SharedConnection(self.path, self.lock)
         self.db.executescript("""
             PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -337,14 +335,16 @@ class Auth:
             return user
 
     def logout(self, token):
-        self.db.execute("DELETE FROM session WHERE token_hash = ?", (hashlib.sha256((token or "").encode()).hexdigest(),))
-        self.db.commit()
+        with self.lock:  # the statement and its commit together: another thread's BEGIN must not fall between them
+            self.db.execute("DELETE FROM session WHERE token_hash = ?", (hashlib.sha256((token or "").encode()).hexdigest(),))
+            self.db.commit()
 
     def end_sessions(self, username):
-        user = self._get("user", username)
-        if user:
-            self.db.execute("DELETE FROM session WHERE user_id = ?", (user["id"],))
-            self.db.commit()
+        with self.lock:
+            user = self._get("user", username)
+            if user:
+                self.db.execute("DELETE FROM session WHERE user_id = ?", (user["id"],))
+                self.db.commit()
 
     def close(self):
         self.db.close()

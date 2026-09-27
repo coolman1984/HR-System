@@ -317,6 +317,21 @@ threads = [threading.Thread(target=racer, args=(i,)) for i in range(12)]
 [t.join() for t in threads]
 check("twelve_simultaneous_saves_exactly_one_wins", sorted(outcomes) == [200] + [409] * 11 and svc.registry.get("employee", "E003")["ver"] == e["ver"] + 1,
       (outcomes, [a for a in svc.journal.audit_entries("system", limit=50) if a["event"] in ("server.error", "request.unreadable")]))
+# Every thread of the server shares one connection per database: a statement must wait for the thread that holds the
+# lock (a writer holds it from BEGIN to COMMIT). Unlocked reads raised InterfaceError under load in CI (HISTORY.md).
+from hr_core.journal import SharedConnection  # noqa: E402
+check("every_shared_database_is_serialised", all(isinstance(x.db, SharedConnection) for x in (svc.journal, svc.registry, svc.auth)))
+seen = []
+reader = threading.Thread(target=lambda: seen.append(svc.registry.get("employee", "E003")["preferred_name"]))
+with svc.registry.lock:
+    svc.registry.db.execute("BEGIN IMMEDIATE")
+    svc.registry.db.execute("UPDATE employee SET preferred_name = 'half-done' WHERE code = 'E003'")
+    reader.start()
+    reader.join(0.3)
+    waited = reader.is_alive()
+    svc.registry.db.execute("ROLLBACK")
+reader.join()
+check("a_reader_waits_for_an_open_transaction_and_never_sees_it", waited and seen and seen[0] != "half-done", (waited, seen))
 uver = next(u for u in svc.auth.users() if u["code"] == "officer2")["ver"]
 assert admin.call("PATCH", "/api/admin/users/officer2", {"fields": {"display_name": "Officer Two"}, "expected_ver": uver})[0] == 200
 svc.auth.create_user("admin", "temp1", "Temp", "Temp-pass-11", "viewer", must_change=False)

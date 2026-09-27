@@ -25,6 +25,10 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L10** Run a migrated suite on a clean machine: the original tests needed `PYTHONPATH=vendor.zip`.
 - **L11** `TEST_HR_FOUNDATION.py` rewrites `sample/HR_Attendance_Delta_Demo.xlsx`: run `git checkout -- sample/` after it.
 - **L12** Top-level `.py` files are standard library only, tests included (`CHECK_ENVIRONMENT.py` scans them all).
+- **L24** A green CI badge is read on the pull request, not assumed: HR's CI was red on every run for a whole day.
+- **L25** One SQLite connection shared by server threads: every statement under the lock, rows read before release
+  (`SharedConnection`); an intermittent 500 was a race, found by recording the file and line in the audit.
+- **L26** Hash-pinned files need byte-identical checkouts: `.gitattributes` `* -text` (Windows CRLF broke the pin).
 
 ## Dependencies
 - **L13** Probe an optional native library by what it does, not by whether it imports: a broken `cryptography`

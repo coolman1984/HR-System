@@ -11,7 +11,7 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 ## 2026-09-27 — Stage 3.0: continuity documents and the documentation guard
 - **What:** `HISTORY.md` (this file), `STATUS.md`, `docs/LESSONS.md`, `AGENT_HANDOFF.md`, the agent skill
   `.claude/skills/hr-development/SKILL.md`, and `TEST_DOCS_CURRENT.py` (10 planted bugs added to
-  `migration/mutations.py`, now 38). `CLAUDE.md`, `README.md`, `START_HERE_AI.md`, root `SKILL.md` corrected; older
+  `migration/mutations.py`); CI made green (below), 2 more planted bugs, 40 in total. `CLAUDE.md`, `README.md`, `START_HERE_AI.md`, root `SKILL.md` corrected; older
   documents keep their text under a historical banner. No product code changed.
 - **Why:** the owner changes agent sessions every few hours. GMES, BAMS and 3D-Modeling can be resumed from their
   files in minutes; HR-System could not.
@@ -31,6 +31,24 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
   they differ, when `STATUS.md` and `AGENT_HANDOFF.md` disagree, or when an old claim reappears as current.
 - **Lesson:** a document nobody is forced to update will eventually say the opposite of the code. Make the critical
   ones checkable, and keep history instead of deleting it.
+
+### CI had never been green, on any branch
+- **Symptom:** opening the documentation pull request showed every CI run since the migration red: Windows jobs,
+  the Windows signing cross-check, and intermittently Linux. Earlier sessions reported "CI on Linux and Windows"
+  from local runs only.
+- **Cause:** three separate faults. (1) Git on Windows converted LF to CRLF on checkout, so the hash-pinned BAMS
+  signing file no longer matched its pin. (2) `SMOKE_TEST.py` and the five tests that start the engine could not delete their temporary folder because the locked
+  engine keeps `history.db` open until the process ends, and Windows cannot delete an open file. (3) A real bug: the
+  server's threads shared one SQLite connection per database, and reads ran outside the lock; under load a save
+  answered 500 (`InterfaceError` at `registry.py:118`, named by the audit once it recorded the place) or 400 instead of
+  409, and a reader could see another thread's uncommitted transaction.
+- **Fix:** `.gitattributes` `* -text` (byte-identical checkouts everywhere); those tests ignore cleanup errors of their
+  temporary folder (engine unchanged); `hr_core/journal.py` `SharedConnection` runs every statement under the
+  owner's lock and reads its rows before releasing it, `logout` and `end_sessions` hold the lock across statement and
+  commit; the audit records file and line of every server error and unreadable request. New checks
+  `every_shared_database_is_serialised` and `a_reader_waits_for_an_open_transaction_and_never_sees_it`, two planted bugs.
+- **Lesson:** "CI runs it" means nothing until someone reads a green run on the pull request. A test that fails
+  sometimes is reporting a race, not a flake; make the failure name its place, then make the rule deterministic.
 
 ### The customer ZIP does not contain the modern HR system
 - **Symptom:** `BUILD_PROJECT.py` passes and produces a ZIP, but its explicit file list holds only the attendance

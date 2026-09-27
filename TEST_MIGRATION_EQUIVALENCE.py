@@ -52,7 +52,7 @@ print(json.dumps(steps, sort_keys=True, default=str, ensure_ascii=False))
 
 def run(root):
     root = Path(root).resolve()
-    with tempfile.TemporaryDirectory(prefix="hr_equivalence_") as folder:
+    with tempfile.TemporaryDirectory(prefix="hr_equivalence_", ignore_cleanup_errors=True) as folder:
         env = dict(os.environ, EXCEL_APP_DATA_DIR=str(Path(folder) / "data"))
         # The original tests import openpyxl directly; the application itself loads it from vendor.zip.
         env["PYTHONPATH"] = str(root / "vendor.zip") + os.pathsep + env.get("PYTHONPATH", "")

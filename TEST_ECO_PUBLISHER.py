@@ -54,7 +54,7 @@ def start_inbox(port=0):
 
 
 results = {}
-with tempfile.TemporaryDirectory(prefix="hr_eco_") as folder:
+with tempfile.TemporaryDirectory(prefix="hr_eco_", ignore_cleanup_errors=True) as folder:
     os.environ["EXCEL_APP_DATA_DIR"] = str(Path(folder) / "data")
     os.chdir(ROOT)
     import eco_contract

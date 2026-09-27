@@ -26,7 +26,7 @@ every planted bug and GMES's real HR end-to-end test pass; pushed as its own cha
 | `leave` — leave linked to attendance days (inside the migrated engine; see Partially built for the rest) | same engine | `TEST_INT02_ROSTER_LEAVE_LINK.py` |
 | Behaviour of the migrated application frozen against the original repository (0 differences, 5 scenarios) | `migration/golden_behaviour.json` | `TEST_MIGRATION_EQUIVALENCE.py` |
 | `kernel` — company → site → business unit → department → section, jobs, positions, employee registry (employment data only, no personal data), safe Excel import, optimistic versions, soft delete and Recycle Bin, rebuild from the journal | `hr_core/registry.py`, `hr_core/importer.py`, `hr_registry.py` | `TEST_HR_REGISTRY.py` (13) |
-| Users, profiles, 12 server-side permissions checked on every request, sessions, lockout, device identity with clone detection, signed append-only journal and audit, verified backups, automatic restore rehearsal, compensating restore, recovery of a lost `hr.db` / `auth.db` / journal | `hr_core/auth.py`, `hr_core/service.py`, `hr_core/api.py`, `hr_core/device.py`, `hr_core/journal.py`, `hr_core/signing.py`, `hr_core/backup.py`, `hr_server.py` | `TEST_HR_SECURITY.py` (77), `docs/HR_SECURITY.md` |
+| Users, profiles, 12 server-side permissions checked on every request, sessions, lockout, device identity with clone detection, signed append-only journal and audit, verified backups, automatic restore rehearsal, compensating restore, recovery of a lost `hr.db` / `auth.db` / journal | `hr_core/auth.py`, `hr_core/service.py`, `hr_core/api.py`, `hr_core/device.py`, `hr_core/journal.py`, `hr_core/signing.py`, `hr_core/backup.py`, `hr_server.py` | `TEST_HR_SECURITY.py` (79), `docs/HR_SECURITY.md` |
 | Ecosystem publisher: `eco.employee.v1` (from the registry) and `eco.attendance_day.v1`, outbox, retry with the same stored bytes, no duplicates; disabled without `ECO_GMES_URL` | `eco_publisher.py`, `eco_contract.py`, `eco_schemas/` | `TEST_ECO_PUBLISHER.py` (9), GMES `hr-e2e` against this repository |
 | Module and edition map (`kernel`, `attendance`, `leave` built) | `hr_core/modules.py` | `TEST_HR_REGISTRY.py` |
 | Documentation guard | `TEST_DOCS_CURRENT.py` | itself, and its planted bugs in `migration/mutations.py` |
@@ -40,7 +40,7 @@ every planted bug and GMES's real HR end-to-end test pass; pushed as its own cha
 | Leave | Linked to attendance days at import | Leave requests, approval and balances as an HR module |
 | Attendance ↔ official employee | Attendance is enriched from the **uploaded** employee file | Binding to the registry employee (phase 4) |
 | LAN use | `hr_server.py serve --host` | No TLS yet (BAMS's pinned-certificate pattern is the plan, `docs/HR_SECURITY.md` §4) |
-| Windows | CI runs every Python test on Windows | `START.bat` and the protected-workbook Excel path never run on a real target PC |
+| Windows | CI runs every Python test on Windows (red on every run until 2026-09-27, see `HISTORY.md`) | `START.bat` and the protected-workbook Excel path never run on a real target PC |
 | Signing library | `cryptography` when it works, BAMS's vendored file otherwise (ADR-HR-002) | Bundling `cryptography` needs an embedded Python runtime in the installer |
 
 ## Planned
@@ -95,7 +95,7 @@ python BUILD_PROJECT.py
 ```
 Then, in a GMES checkout: `sh scripts/fetch-hr.sh`, `ECO_E2E_REQUIRED=1 npm test`, `node scripts/mutations.mjs`.
 
-**Last full run (2026-09-27, this stage):** every test above passes; 38 of 38 planted bugs caught; GMES against this
+**Last full run (2026-09-27, this stage):** every test above passes; 40 of 40 planted bugs caught; GMES against this
 repository: 15 + 29 + 10 tests pass, every GMES planted bug caught.
 
 ## Architecture inventory (checked by `TEST_DOCS_CURRENT.py`)
@@ -154,5 +154,5 @@ route: GET /api/admin/health
 route: GET /api/admin/backups
 route: POST /api/admin/backups
 route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
-mutations: 38
+mutations: 40
 ```

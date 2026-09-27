@@ -32,6 +32,58 @@ def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+class _Rows(list):
+    """The rows of one statement, already read (so the caller never touches the shared connection again)."""
+
+    def fetchone(self):
+        return self[0] if self else None
+
+    def fetchall(self):
+        return list(self)
+
+
+class SharedConnection:
+    """One SQLite connection used by every thread of the server (ThreadingHTTPServer).
+
+    Each statement runs under the owner's re-entrant lock and its rows are read before the lock is released, so two
+    threads never step the connection (or the same cached statement) at the same moment, and a reader never sees a
+    transaction another thread has begun but not committed: writers hold the same lock from BEGIN to COMMIT.
+    Without it, simultaneous saves answered 500 and 400 under load (HISTORY.md 2026-09-27).
+    """
+
+    def __init__(self, path, lock):
+        conn = sqlite3.connect(path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        object.__setattr__(self, "_conn", conn)
+        object.__setattr__(self, "_lock", lock)
+
+    def execute(self, sql, params=()):
+        with self._lock:
+            return _Rows(self._conn.execute(sql, params).fetchall())
+
+    def executescript(self, script):
+        with self._lock:
+            self._conn.executescript(script)
+
+    def commit(self):
+        with self._lock:
+            self._conn.commit()
+
+    def rollback(self):
+        with self._lock:
+            self._conn.rollback()
+
+    def close(self):
+        with self._lock:
+            self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._conn, name, value)
+
+
 def open_journal(data_dir):
     """The journal of this installation, signing as this installation's device (the normal way to open it)."""
     from .device import Device
@@ -43,8 +95,7 @@ class Journal:
         os.makedirs(data_dir, exist_ok=True)
         self.path = os.path.join(data_dir, "hr_journal.db")
         self.lock = threading.RLock()
-        self.db = sqlite3.connect(self.path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        self.db = SharedConnection(self.path, self.lock)
         self.db.executescript("""
             PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;
             CREATE TABLE IF NOT EXISTS journal (

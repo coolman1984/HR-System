@@ -33,7 +33,7 @@ def write_attendance_book(path, rows, sheet_name="TIM_02_DailyAttendance"):
     workbook.save(path)
 
 
-with tempfile.TemporaryDirectory(prefix="hr_attendance_foundation_") as folder:
+with tempfile.TemporaryDirectory(prefix="hr_attendance_foundation_", ignore_cleanup_errors=True) as folder:
     data_dir = Path(folder) / "data"
     os.environ["EXCEL_APP_DATA_DIR"] = str(data_dir)
 

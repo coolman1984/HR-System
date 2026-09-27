@@ -68,6 +68,10 @@ MUTATIONS = [
      'def verify(pub, msg, sig):', 'def verify(pub, msg, sig):  # tidied', "TEST_HR_SECURITY.py"),
     ("the private device key is put into backups", "hr_core/backup.py",
      'files = {f: {"sha256"', 'shutil.copytree(os.path.join(self.data_dir, "node"), os.path.join(work, "node"))\n                files = {f: {"sha256"', "TEST_HR_SECURITY.py"),
+    ("a shared connection runs statements without its lock", "hr_core/journal.py",
+     "        with self._lock:\n            return _Rows(", "        if True:\n            return _Rows(", "TEST_HR_SECURITY.py"),
+    ("the registry opens a plain connection again", "hr_core/registry.py",
+     "self.db = SharedConnection(self.path, self.lock)", "self.db = SharedConnection(self.path, self.lock)._conn", "TEST_HR_SECURITY.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"shifts": {"depends_on": ["kernel"], "status": "planned"', '"shifts": {"depends_on": ["kernel"], "status": "built"', "TEST_DOCS_CURRENT.py"),
