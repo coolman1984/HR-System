@@ -1,0 +1,4 @@
+# Every file is stored and checked out byte-for-byte on every OS (no CRLF conversion on Windows):
+# hashes are pinned for the vendored signing file and the locked core (LOCKED_CORE.json), and the
+# customer build must be identical whatever machine it is built on. HISTORY.md 2026-09-27.
+* -text

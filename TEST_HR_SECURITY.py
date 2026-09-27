@@ -315,7 +315,8 @@ def racer(i):
 threads = [threading.Thread(target=racer, args=(i,)) for i in range(12)]
 [t.start() for t in threads]
 [t.join() for t in threads]
-check("twelve_simultaneous_saves_exactly_one_wins", sorted(outcomes) == [200] + [409] * 11 and svc.registry.get("employee", "E003")["ver"] == e["ver"] + 1, outcomes)
+check("twelve_simultaneous_saves_exactly_one_wins", sorted(outcomes) == [200] + [409] * 11 and svc.registry.get("employee", "E003")["ver"] == e["ver"] + 1,
+      (outcomes, [a for a in svc.journal.audit_entries("system", limit=50) if a["event"] in ("server.error", "request.unreadable")]))
 uver = next(u for u in svc.auth.users() if u["code"] == "officer2")["ver"]
 assert admin.call("PATCH", "/api/admin/users/officer2", {"fields": {"display_name": "Officer Two"}, "expected_ver": uver})[0] == 200
 svc.auth.create_user("admin", "temp1", "Temp", "Temp-pass-11", "viewer", must_change=False)
