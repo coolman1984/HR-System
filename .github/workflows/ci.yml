@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONPATH: vendor.zip
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python CHECK_ENVIRONMENT.py
+      - run: python SMOKE_TEST.py
+      - run: python TEST_HR_FOUNDATION.py
+      - run: python TEST_INT01_MULTI_SOURCE.py
+      - run: python TEST_INT02_ROSTER_LEAVE_LINK.py
+      - run: python TEST_INT03_HTTP_MULTI_UPLOAD.py
+      - run: python TEST_MIGRATION_EQUIVALENCE.py
+      - run: python TEST_ECO_PUBLISHER.py
+      - run: python TEST_HR_REGISTRY.py
+      - run: python migration/mutations.py
+      - run: python BUILD_PROJECT.py
