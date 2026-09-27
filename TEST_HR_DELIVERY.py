@@ -205,16 +205,22 @@ with P.attendance.lock:  # an upload is running
 t.join()
 check("a_backup_waits_for_a_running_upload", waited and finished)
 
-# a lost attendance history comes back from the newest verified backup, and it is audited
+# a lost attendance history comes back from the newest verified backup, and it is audited. Tried on a copy of the
+# installation in a new process: this process's engine is bound to the original folder and keeps its file open
+# (Windows cannot delete an open file), exactly like the real program, which is stopped before such a repair.
 SERVER.shutdown()
 SERVER.server_close()
 P.close()
-os.remove(P.attendance.path)
-P2 = Product(H)
-P2.open()
-check("a_lost_attendance_history_is_recovered_from_a_backup", os.path.isfile(P2.attendance.path) and P2.report["attendance_recovered_from"]
-      and any(a["event"] == "attendance.recovered" for a in P2.service.journal.audit_entries("system", 50)))
-P2.close()
+lost = os.path.join(TMP, "product-lost-history")
+shutil.copytree(H.path, lost)
+os.remove(os.path.join(lost, "data", "history.db"))
+probe = ("import json, sys; sys.path.insert(0, %r)\nfrom hr_core.app import Product\nfrom hr_core.home import Home\n"
+         "p = Product(Home(%r)); p.open()\nimport os\nprint(json.dumps({'file': os.path.isfile(p.attendance.path), "
+         "'from': p.report['attendance_recovered_from'], 'audited': any(a['event'] == 'attendance.recovered' for a in "
+         "p.service.journal.audit_entries('system', 50))}))\np.close()\n") % (str(ROOT), lost)
+r = subprocess.run([sys.executable, "-c", probe], env=dict(os.environ, PYTHONPATH=str(ROOT / "vendor.zip")), capture_output=True, timeout=300)
+out = json.loads(r.stdout.decode().strip().splitlines()[-1]) if r.returncode == 0 else {"error": r.stderr.decode()[-500:]}
+check("a_lost_attendance_history_is_recovered_from_a_backup", out.get("file") and out.get("from") and out.get("audited"), out)
 
 # a config.json edited to another company id: the program explains, the data is untouched
 before = hashlib.sha256(open(os.path.join(H.data, "hr_journal.db"), "rb").read()).hexdigest()
