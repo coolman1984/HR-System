@@ -95,7 +95,7 @@ python BUILD_PROJECT.py
 ```
 Then, in a GMES checkout: `sh scripts/fetch-hr.sh`, `ECO_E2E_REQUIRED=1 npm test`, `node scripts/mutations.mjs`.
 
-**Last full run (2026-09-27, this stage):** every test above passes; 40 of 40 planted bugs caught; GMES against this
+**Last full run (2026-09-27, this stage):** every test above passes; 41 of 41 planted bugs caught; GMES against this
 repository: 15 + 29 + 10 tests pass, every GMES planted bug caught.
 
 ## Architecture inventory (checked by `TEST_DOCS_CURRENT.py`)
@@ -154,5 +154,5 @@ route: GET /api/admin/health
 route: GET /api/admin/backups
 route: POST /api/admin/backups
 route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
-mutations: 40
+mutations: 41
 ```

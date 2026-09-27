@@ -91,6 +91,8 @@ MUTATIONS = [
      "## 2026-09-27 — Stage 3.0", "## 2026-09-26 — Stage 3.0", "TEST_DOCS_CURRENT.py"),
     ("the old attendance-only claim returns to the README", "README.md",
      "## ما يصل للعميل اليوم\n", "## ما يصل للعميل اليوم\n\nهذه النسخة هي أساس الحضور فقط.\n", "TEST_DOCS_CURRENT.py"),
+    ("the shipped README links to a repository-only document", "README.md",
+     "ابدأ من [دليل المستخدم](USER_GUIDE.md).", "ابدأ من [دليل المستخدم](USER_GUIDE.md) و[الحالة](STATUS.md).", "TEST_DOCS_CURRENT.py"),
     ("an outdated guide loses its historical banner", "PROJECT_GUIDE.md",
      "> **HISTORICAL (2026-09-05", "> **Note (2026-09-05", "TEST_DOCS_CURRENT.py"),
 ]

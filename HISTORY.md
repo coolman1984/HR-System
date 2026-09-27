@@ -11,7 +11,7 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 ## 2026-09-27 — Stage 3.0: continuity documents and the documentation guard
 - **What:** `HISTORY.md` (this file), `STATUS.md`, `docs/LESSONS.md`, `AGENT_HANDOFF.md`, the agent skill
   `.claude/skills/hr-development/SKILL.md`, and `TEST_DOCS_CURRENT.py` (10 planted bugs added to
-  `migration/mutations.py`); CI made green (below), 2 more planted bugs, 40 in total. `CLAUDE.md`, `README.md`, `START_HERE_AI.md`, root `SKILL.md` corrected; older
+  `migration/mutations.py`); CI made green (below), 3 more planted bugs, 41 in total. `CLAUDE.md`, `README.md`, `START_HERE_AI.md`, root `SKILL.md` corrected; older
   documents keep their text under a historical banner. No product code changed.
 - **Why:** the owner changes agent sessions every few hours. GMES, BAMS and 3D-Modeling can be resumed from their
   files in minutes; HR-System could not.
@@ -58,6 +58,15 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 - **Fix:** recorded as **Partially built** in `STATUS.md`; not changed here (the installer shape — embedded Python
   runtime, see ADR-HR-002 — is an owner decision).
 - **Lesson:** "built and tested" is not "delivered". A status file must say which of the two is true.
+
+### The customer README linked to documents the ZIP does not carry
+- **Symptom:** a review of this change (Codex) found that `README.md`, which `BUILD_PROJECT.py` ships to customers,
+  linked to `STATUS.md` and `AGENT_HANDOFF.md`, which the ZIP does not contain.
+- **Cause:** the README serves two readers — the customer (inside the ZIP) and the developer (in the repository).
+- **Fix:** the README names the developer documents as living in the source repository, without links; check 10 of
+  `TEST_DOCS_CURRENT.py` fails when a shipped document links to a file the ZIP does not ship (planted bug added).
+- **Lesson:** a document that ships has a different audience from one that stays in the repository; check its links
+  against the package, not against the repository.
 
 ### Mizan's roadmap still plans its own employees and payroll
 - **Symptom:** `Accounting-sys/docs/ROADMAP.md` lists "Payroll (basic): employees, salary components, monthly posting".

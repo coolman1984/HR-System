@@ -182,4 +182,15 @@ for rel in ("PROJECT_GUIDE.md", "project_memory/PROGRAM_MAP.md", "SONNET_5_HIGH_
         f"{rel} describes an older stage: its first lines must say so (HISTORICAL or SCOPE) and point to STATUS.md"
 results["old_claims_marked_historical"] = True
 
+# 10. A document shipped in the customer ZIP links only to documents the ZIP also carries.
+shipped = next(n for n in ast.walk(ast.parse(read("BUILD_PROJECT.py")))
+               if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "runtime_files" for t in n.targets))
+shipped = {e.value for e in shipped.value.elts}
+for rel in sorted(r for r in shipped if r.endswith(".md")):
+    for target in re.findall(r"\]\(([^)#\s]+)\)", read(rel)):
+        if "://" not in target:
+            target = (Path(rel).parent / target).as_posix()
+            assert target in shipped, f"{rel} is in the customer ZIP and links to {target}, which BUILD_PROJECT.py does not ship"
+results["shipped_documents_link_only_to_shipped_documents"] = True
+
 print(json.dumps(results, indent=2))
