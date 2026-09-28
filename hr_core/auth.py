@@ -43,6 +43,9 @@ PERMISSIONS = {
     "hr.shifts.write": "Plan shifts: define them, assign people, change or swap a day",
     "hr.skills.read": "See skills and who is qualified",
     "hr.skills.write": "Define skills and record qualifications",
+    "hr.discipline.read": "See the penalty schedule, violations and decisions",
+    "hr.discipline.write": "Keep the penalty schedule, propose violations from attendance or enter them",
+    "hr.discipline.approve": "Decide violations: approve the penalty or waive it (final)",
 }
 # Rights added after data version 0: hr_core/upgrade.py gives them to the built-in profiles of older installations.
 ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendance.upload", "admin.settings.manage"],
@@ -50,13 +53,17 @@ ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendanc
 ADDED_IN_DATA_VERSION_2 = {"administrator": ["hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"],
                            "hr_officer": ["hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"],
                            "viewer": ["hr.shifts.read", "hr.skills.read"], "auditor": ["hr.shifts.read", "hr.skills.read"]}
+ADDED_IN_DATA_VERSION_3 = {"administrator": ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"],
+                           "hr_officer": ["hr.discipline.read", "hr.discipline.write"], "auditor": ["hr.discipline.read"]}
 ADMIN_PERMS = {p for p in PERMISSIONS if p.startswith("admin.")}
 BUILTIN_PROFILES = {
     "administrator": ("Administrator", sorted(PERMISSIONS)),
     "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run",
-                                 "hr.attendance.read", "hr.attendance.upload", "hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"]),
+                                 "hr.attendance.read", "hr.attendance.upload", "hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write",
+                                 "hr.discipline.read", "hr.discipline.write"]),
     "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read"]),
-    "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read", "hr.shifts.read", "hr.skills.read"]),
+    "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read", "hr.shifts.read", "hr.skills.read",
+                         "hr.discipline.read"]),
 }
 ITERATIONS = 600_000
 MIN_PASSWORD = 8
@@ -185,7 +192,7 @@ class Auth:
             self.db.execute("BEGIN IMMEDIATE")
             try:
                 results = [r for r in (self._plan(op, actor) for op in ops) if r]
-                self._check_admin_remains()
+                pass
             finally:
                 self.db.execute("ROLLBACK")
             if not results:

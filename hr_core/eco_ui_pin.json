@@ -1,10 +1,10 @@
 {
   "what": "The ecosystem interface kit, copied UNCHANGED from GMES packages/eco-ui/src (ADR-029 there), fonts/ included. Change it in GMES, then copy it here with this pin; TEST_HR_DELIVERY.py refuses any other copy.",
-  "source": "https://github.com/coolman1984/GMES/tree/4d27f55522a4e21314963af5e99bb7366eb43303/packages/eco-ui/src",
-  "commit": "4d27f55522a4e21314963af5e99bb7366eb43303",
+  "source": "https://github.com/coolman1984/GMES/tree/6c70662d862e76943fcca732789e692f3986bce5/packages/eco-ui/src",
+  "commit": "6c70662d862e76943fcca732789e692f3986bce5",
   "files": {
-    "eco-ui.css": "c875d666e6c00b5244465c9dd1f0a60d4e5b7d660a15cfd8bb20fe4046ae1d92",
-    "eco-ui.js": "7f706e7c10be6619eab637e067e9644d1d3c2b990c6ff2089141985e5a971224",
+    "eco-ui.css": "0fcc427e0b183d5a39ef2042654274c0e80d49278cc6f63a6ffa0145539f8317",
+    "eco-ui.js": "40fa6e20a20f47773c278890ab3b23898025a0b33287481150ff70f1112796d7",
     "fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2": "6010e7fd0dce5d527583951750728cbe3c895efbd16aa0f809ab8c824878c9d8",
     "fonts/ibm-plex-sans-arabic-arabic-500-normal.woff2": "90aef64fea9794f232332e907d45810ab268d1a11721340025eba2a2cdb36d5c",
     "fonts/ibm-plex-sans-arabic-arabic-600-normal.woff2": "16734a5adb27b0f363e566cbbeacec480da0dc0baa19c8f0053251c2e2bc0eac",
@@ -13,6 +13,6 @@
     "fonts/inter-latin-ext-wght-normal.woff2": "34b9c504cab7a73e37b746343a449132e56cf7b5481af2cb81dc74dcff25c956",
     "fonts/inter-latin-wght-normal.woff2": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
     "fonts/Inter-OFL.txt": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345",
-    "tokens.css": "676c5c489d04ad23ca508e91ec781875ef17eb67aecae9b6cbb85d9734fdbbe1"
+    "tokens.css": "e4a4ff73820ed1941b147691d67b36d6b8ca8640b9e248ce4fc4146541500e8b"
   }
 }

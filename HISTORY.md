@@ -8,6 +8,45 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-28 — Discipline module, employee journey, guide system and the client demo
+- **What:** on the owner's order ("a full demo for clients: a new manager hired, his days, activities and penalties, time
+  lapse", "a real penalties module", "Mizan's guide and warning system", "auto-fit the columns"): the **discipline** module
+  (`hr_core/discipline.py`, phase 6: penalty schedule, violations proposed from attendance, decisions under a separate right,
+  the law's limits, days never money, data version 3, `TEST_HR_DISCIPLINE.py`); the **employee journey** screen (`EMP2010`,
+  one person's facts from every module on one timeline with a week-by-week time-lapse); the **guide system** from Mizan's
+  design (guide mode, F1 help panel, 8 guided tours, help center `HLP1010`, warnings on the record, tips in the forms); the
+  kit (GMES `e14ff0d`, `6c70662`) gained auto-fitting columns, colour tones, `drawer()` and `tour()`; a **demo installation**
+  (`Start-HR-Demo.bat`, `tools/make_demo.py`) built from the synthetic factory dataset through the product's own code, with
+  the story of Karim Abdelaziz, production manager hired 2026-06-15.
+- **Why:** the owner shows the product to clients; every figure must come from the real engine, so the demo is made by
+  the product's own operations, each by the person who would do it, on its own date. Payroll stays design only: a penalty
+  is recorded in days; payroll turns days into money later (`docs/HR_PAYROLL_DESIGN.md`).
+
+### The whole screen application did not load: one parenthesis too many
+- **Symptom:** in Chrome the page stayed on the sign-in screen with `SyntaxError: Unexpected token ')'` in `app.js`; every
+  automated check was green.
+- **Cause:** `node --check app.js` treats a `.js` file outside a package as a script and did not flag the error in that
+  run; no Python test executes the screens.
+- **Fix:** the extra parenthesis was removed; every change to the screens is now checked as a module
+  (`node --check` on a copy named `.mjs`) and opened in a real browser over CDP before it is called done.
+- **Lesson:** a green suite that never runs the screens proves nothing about them: open them.
+
+### Auto-fitted columns came out narrower than their text
+- **Symptom:** after the first auto-fit, names showed as "Moh…" and positions as "POS-00…".
+- **Cause:** the width measured the text only: not the 24 px of cell padding, the avatar drawn beside a name, or the
+  monospace font of code columns.
+- **Fix:** the kit measures with the column's own font (mono for codes), adds the look's padding and the avatar, and a
+  width the person dragged is kept (only those are saved in the layout).
+- **Lesson:** measure what is drawn, not the value.
+
+### The one who proposes a violation could not be kept from deciding it
+- **Symptom:** the first test run refused the line manager ("no right hr.discipline.write") when he decided a violation.
+- **Cause:** `save()` checked the entity's write right before looking at what the change was, so deciding needed both
+  rights and the two duties could not be separated.
+- **Fix:** a decision (status other than proposed) needs only `hr.discipline.approve`; a proposal only
+  `hr.discipline.write`; who decided and when come from the server. A planted bug proves it.
+- **Lesson:** separate duties are separate checks, decided by what the request does, not by the table it touches.
+
 ## 2026-09-28 — Mizan's look and ideas in HR-System (phase 2.6, through the shared kit)
 - **What:** on the owner's order ("take Mizan's design, look, features and ideas"): the kit is re-copied from GMES
   `4d27f55` (ADR-033 there) with its new opt-in modern look (Mizan's tokens, Inter + IBM Plex Sans Arabic carried in

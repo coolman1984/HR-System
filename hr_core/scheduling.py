@@ -240,5 +240,6 @@ def compare(days, attendance_rows, employees):
             verdict = "worked_off_day" if present else "off"
         else:
             verdict = "no_schedule" if present else "none"
-        out.append({**d, "attendance_status": status, "worked_minutes": r.get("worked_minutes") if r else None, "verdict": verdict})
+        out.append({**d, "attendance_status": status, "worked_minutes": r.get("worked_minutes") if r else None, "verdict": verdict,
+                    "late_minutes": r.get("late_minutes") if r else None, "early_leave_minutes": r.get("early_leave_minutes") if r else None})
     return {"days": out, "unknown_attendance_people": sorted(unknown)}

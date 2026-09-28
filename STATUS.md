@@ -22,7 +22,7 @@ system health, settings; English/Arabic, light/dark, compact/comfortable. Screen
 checklist: `docs/ux/`. **Exit gate:** the owner approves the visual shell (compared with his redacted G-MES screenshots).
 On the owner's order (2026-09-28) the shell took Mizan's look and ideas through the kit (GMES `4d27f55`, ADR-033): the
 modern look by default, column filters / grouping / presets, the Advisor, the Mizan-style dashboard, the rights matrix.
-Automated checks green; **not yet seen in a browser** (the first thing to do next).
+Seen in a real browser on 2026-09-28 (Chrome over CDP, the demo installation): every main screen opens without a script error; a syntax error, a white box in primary buttons, too narrow columns and an empty half of the dashboard in Arabic were found there and fixed.
 
 **Exit gate of phase 2.5:** installed from scratch on a clean Windows without Python and without internet; first
 administrator and sign-in; employee register; permissions; attendance with the same numbers; backup, rehearsal and
@@ -52,6 +52,10 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | `shifts` (phase 3, 2026-09-28, owner's order) — shifts (overnight = one work date), working calendars (rest days, holidays), effective-dated assignments (regular never overlap; temporary covers regular; a started one only ends, not before yesterday; past days never re-planned), day changes and swaps in one save, the planned schedule, planned vs attended comparison, published as `eco.schedule_day.v1` (14 days ahead); screens Roster, Assignments, Shifts, Calendars, Planned vs attended; data version 2 | `hr_core/scheduling.py`, `hr_core/registry.py`, `hr_core/service.py`, `hr_core/api.py`, `eco_publisher.py`, `hr_core/web/app.js` | `TEST_HR_WORKFORCE.py` (50), GMES `hr-e2e` (the plan mirrored, with its age) |
 | `skills` (phase 5, 2026-09-28) — skills catalogue with validity, qualifications per person (level 1-4, certified, expiry from the skill's validity), published as `eco.qualification.v1` (a withdrawn one as inactive); GMES refuses a person at a station whose required skill they do not hold validly at the level; screens Skills matrix, Qualifications, Skills catalogue | `hr_core/skills.py`, `hr_core/registry.py`, `eco_publisher.py`, `hr_core/web/app.js` | `TEST_HR_WORKFORCE.py`, GMES `hr-boundary` and `hr-e2e` |
 | The product shell (phase 2.6, UX): one application shell built from the ecosystem's interface kit (menu tree, screen search with actions, tabs, standard screen with subtitle and help, grid with column filters, grouping and presets, dialogs); the kit is the unchanged, hash-pinned copy from GMES (fonts included); Mizan's modern look by default; server values written as text only | `hr_core/web/app.js`, `hr_core/web/hr.css`, `hr_core/web/eco-ui/`, `hr_core/eco_ui_pin.json` | `TEST_HR_DELIVERY.py` (79), screenshots `docs/ux/` (taken before the modern look) |
+| `discipline` (phase 6, 2026-09-28, owner's order) — the company's penalty schedule (violation, threshold, repeat window, the penalty for each repeat), violations proposed from the planned days against attendance (late, early leave, absence; never a leave day, a rest day or a holiday; nothing proposed twice), decisions by a separate right (`hr.discipline.approve`; who and when from the server), the law's limits (5 days per violation and per month, 30 days to decide, a written investigation over one day), decisions final, penalties in days never money; data version 3; screens Violations and penalties (`DSC2010`), Penalty schedule (`DSC1010`), the Discipline tab of an employee, Advisor warnings before the 30-day limit | `hr_core/discipline.py`, `hr_core/registry.py`, `hr_core/service.py`, `hr_core/api.py`, `hr_core/upgrade.py`, `hr_core/web/app.js` | `TEST_HR_DISCIPLINE.py` (26) |
+| Employee journey (`EMP2010`): one person's facts from every module on one timeline (joining, team, account, shifts, day changes, qualifications, attended days, lateness, absences, leave, violations, decisions, two weeks ahead), a week-by-week time-lapse with running figures, and the person's activity from the audit | `hr_core/web/app.js` | seen in Chrome on the demo; `TEST_HR_DELIVERY.py` (its texts) |
+| Guide system (Mizan's design): guide mode off/basic/full, F1 help panel (the screen's help, "how do I" search, keys), 8 guided tours across screens, help center (`HLP1010`), the Advisor's warnings on the record itself, tips inside the forms | `hr_core/web/app.js`, kit `drawer()` and `tour()` | seen in Chrome; `TEST_HR_DELIVERY.py` (every text in both languages) |
+| Demo installation: `Start-HR-Demo.bat` builds and starts a separate installation (never a real one) with the synthetic factory dataset through the importer, shifts, assignments, qualifications, users, three weeks of attendance through the engine, the penalty schedule and decisions, deliberate problems for every Advisor check, and the story of a new production manager (hired 2026-06-15) | `tools/make_demo.py`, `tools/start_demo.ps1`, `Start-HR-Demo.bat` | built twice, screens checked in Chrome |
 | Advisor (`ADV1010`): 23 daily checks (people, organisation, planning, skills, security, system) with the reason, what to do and the records concerned; computed in the browser from what the person may read; rights matrix with templates and separated duties (Mizan's ideas) | `hr_core/web/app.js` | `TEST_HR_DELIVERY.py` (every finding has its words in both languages; templates and duty pairs name real rights) |
 | The locked attendance engine behind the same sign-in (`hr.attendance.read` / `hr.attendance.upload`), same golden numbers, uploads audited | `hr_core/attendance.py` | `TEST_HR_DELIVERY.py` |
 | Installation home outside the program, company identity from its owner (Mizan) or local and provisional, never changed silently | `hr_core/home.py`, `hr_core/registry.py` | `TEST_HR_DELIVERY.py` |
@@ -64,7 +68,7 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | What | What exists | What is missing |
 |---|---|---|
 | Delivery to a customer | The Windows installer (phase 2.5) installs the whole product; `BUILD_PROJECT.py` still builds the old attendance ZIP as the engine's rollback line | A run on a truly clean PC (Windows Sandbox, `docs/HR_DELIVERY.md` §5); a code-signing certificate before selling (Windows shows "unknown publisher") |
-| Screens | Every phase-1/2 capability has a screen in the new shell, in English and Arabic | The owner's approval of the look (phase 2.6 gate); the attendance dashboard is the locked engine's own page (English only, its own look); importing workbooks is still a command (`hr_registry.py import`); fonts are the system's |
+| Screens | Every phase-1/2 capability has a screen in the new shell, in English and Arabic | The owner's approval of the look (phase 2.6 gate); the attendance dashboard is the locked engine's own page (English only, its own look); importing workbooks is still a command (`hr_registry.py import`) |
 | Company identity | From Mizan at setup, or local and provisional | The adoption step (a local id later matched to Mizan's) is planned, not built |
 | Eco publisher in the product | Built and tested (`eco_publisher.py`) and compiled into the program | Not started by the installed program yet (no screen to configure `ECO_GMES_URL`) |
 | Leave | Linked to attendance days at import | Leave requests, approval and balances as an HR module |
@@ -124,6 +128,7 @@ python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py
 python TEST_HR_DELIVERY.py
 python TEST_HR_WORKFORCE.py
+python TEST_HR_DISCIPLINE.py
 python TEST_DOCS_CURRENT.py
 python migration/mutations.py           every planted bug caught
 python BUILD_PROJECT.py
@@ -147,15 +152,16 @@ phase: 2.5
 stage: 2.5 one installable product + 2.6 product shell
 updated: 2026-09-28
 done_phases: 1 2
-hr_core: api app attendance auth backup canonical device home importer journal modules registry scheduling service signing skills upgrade version web
+hr_core: api app attendance auth backup canonical device discipline home importer journal modules registry scheduling service signing skills upgrade version web
 root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_main hr_registry hr_server
-root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
+root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_DISCIPLINE TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
 contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1 eco.qualification.v1 eco.schedule_day.v1
-entities: org_unit job position employee shift work_calendar shift_assignment roster_override skill employee_skill
+entities: org_unit job position employee shift work_calendar shift_assignment roster_override skill employee_skill penalty_rule violation
 permissions: hr.org.read hr.org.write hr.employees.read hr.employees.write hr.employees.delete hr.recycle.restore hr.import.run
 permissions: admin.users.manage admin.audit.read admin.backup.manage admin.backup.restore admin.system.read
 permissions: hr.attendance.read hr.attendance.upload admin.settings.manage
 permissions: hr.shifts.read hr.shifts.write hr.skills.read hr.skills.write
+permissions: hr.discipline.read hr.discipline.write hr.discipline.approve
 module: kernel built
 module: attendance built
 module: leave built
@@ -163,6 +169,7 @@ module: shifts built
 module: overtime planned
 module: skills built
 module: training planned
+module: discipline built
 module: payroll design_only
 command: hr_server serve
 command: hr_server create-admin
@@ -185,12 +192,13 @@ route: POST /api/logout
 route: GET /api/me
 route: POST /api/password
 route: GET /api/recycle
-route: GET /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)
-route: PUT /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)
-route: DELETE /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)
-route: POST /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)/restore
+route: GET /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)
+route: PUT /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)
+route: DELETE /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)
+route: POST /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)/restore
 route: GET /api/schedule
 route: GET /api/schedule/compare
+route: POST /api/discipline/propose
 route: POST /api/schedule/swap
 route: GET /api/admin/users
 route: POST /api/admin/users
@@ -206,5 +214,5 @@ route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
 route: GET /api/info
 route: GET /api/admin/settings
 route: PUT /api/admin/settings
-mutations: 71
+mutations: 74
 ```

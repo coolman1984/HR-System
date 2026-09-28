@@ -74,6 +74,7 @@ python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py         phase-2 exit gate (HR_REQUIRE_CROSSCHECK=1 with `cryptography` installed: CI does)
 python TEST_HR_DELIVERY.py          phase 2.5: one product, updates, failures, power cut, recovery installer, languages
 python TEST_HR_WORKFORCE.py         phases 3 and 5: shifts, schedule, attendance comparison, skills, what GMES receives
+python TEST_HR_DISCIPLINE.py        phase 6: penalty schedule, proposals from attendance, separate right to decide, the law's limits
 python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py

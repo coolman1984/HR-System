@@ -32,8 +32,14 @@ look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-accep
 **Mizan's look and ideas (2026-09-28, owner's order):** the kit (GMES `4d27f55`, ADR-033 there) now has an opt-in
 *modern* look taken from Mizan, and HR uses it by default; the grid filters every column, groups and has presets. HR added
 the Advisor (`ADV1010`), a Mizan-style dashboard, the rights matrix with templates and separated duties, and a subtitle and
-help on every screen. All automated checks are green; **nobody has looked at these screens in a browser yet** (the browser
-link and the server run were lost in that session) — do that first: English and Arabic, light and dark, both looks.
+help on every screen. They were checked in Chrome over CDP on 2026-09-28 (demo installation) and the bugs found were fixed.
+
+**Discipline, journey, guide, demo (2026-09-28, owner's order):** the `discipline` module is built (penalty schedule,
+violations proposed from attendance, a separate right to decide, the law's limits, days never money; data version 3;
+`TEST_HR_DISCIPLINE.py`). New screens: Violations and penalties (`DSC2010`), Penalty schedule (`DSC1010`), Employee journey
+(`EMP2010`, time-lapse), Help center (`HLP1010`); F1 help panel, guided tours, guide mode. `Start-HR-Demo.bat` builds a
+separate demo installation (never a real one) at `..\HR-Demo` and starts it on port 8790 (admin / Demo-2026!admin; other
+users Demo-2026!pass); the client story is Karim Abdelaziz (`E000900`), production manager hired 2026-06-15.
 
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
@@ -56,8 +62,9 @@ link and the server run were lost in that session) — do that first: English an
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
-00. Look at the Mizan-style screens in a real browser (dashboard, Advisor, employees with column filters and grouping,
-   profiles matrix, sign-in) in both languages and themes; retake `docs/ux/` screenshots. Fix the look in GMES
+00. The owner reviews the demo (`Start-HR-Demo.bat`): the journey of `E000900`, violations and decisions, the Advisor, the
+   guided tours. Arabic and dark mode of the new screens (journey, violations, help panel) were not yet looked at in a
+   browser: do that, and retake `docs/ux/` screenshots. Fix the look in GMES
    `packages/eco-ui/src` (kit) or `hr_core/web/hr.css` (HR's own parts), never in `hr_core/web/eco-ui/`.
 0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his G-MES screenshot comparison to the TOKENS in
    GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
@@ -81,6 +88,8 @@ document, never the expectation.
 
 ## Open decisions for the owner
 - Should GMES also use the modern look? (Today: GMES classic, HR modern; both from the same kit.)
+- The penalty schedule's defaults (5 days per violation and per month, 30 days to decide, investigation over one day)
+  follow the Egyptian labour law as understood here: have them confirmed by the company's legal adviser before selling.
 - Mizan's Egyptian payroll rules (Law 7/2024 salary tax, social insurance): recorded as design input; code only after
   the payroll gate (`docs/HR_PAYROLL_DESIGN.md` §2).
 - A code-signing certificate before selling (the "unknown publisher" warning is accepted for trials only).

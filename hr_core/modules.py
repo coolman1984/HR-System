@@ -12,6 +12,7 @@ MODULES = {
     "overtime": {"depends_on": ["shifts", "attendance"], "status": "planned", "what": "overtime requests, approval and actuals"},
     "skills": {"depends_on": ["kernel"], "status": "built", "what": "skills catalogue, qualifications with levels and expiry, published for manufacturing's station check"},
     "training": {"depends_on": ["skills"], "status": "planned", "what": "courses and completions that grant skills"},
+    "discipline": {"depends_on": ["shifts", "attendance"], "status": "built", "what": "the company's penalty schedule, violations proposed from attendance, decisions by the right person (days, never money)"},
     "payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only", "what": "pay calculation; accounting entries go to Mizan"},
 }
 

@@ -22,7 +22,7 @@ import threading
 import uuid
 from datetime import datetime, timezone  # noqa: F401
 
-from . import scheduling, skills
+from . import discipline, scheduling, skills
 from .canonical import canonical
 from .journal import SharedConnection, open_journal
 from .scheduling import ScheduleError
@@ -47,10 +47,14 @@ ENTITIES = {
     "roster_override": ["code", "employee_id", "work_date", "shift_id", "reason"],
     "skill": ["code", "name", "category", "validity_months"],
     "employee_skill": ["code", "employee_id", "skill_id", "level", "certified_on", "expires_on", "evidence"],
+    # phase 6 (hr_core/discipline.py): the penalty schedule and the violations decided under it
+    "penalty_rule": ["code", "name", "violation", "threshold_minutes", "window_days", "steps", "active"],
+    "violation": ["code", "employee_id", "rule_id", "work_date", "minutes", "occurrence", "proposed", "status", "decision", "decided_by",
+                  "decided_on", "note", "source"],
 }
 # Entities added after phase 2: left out of the fingerprint while empty, so backups made before they existed still
 # rehearse to the same fingerprint (an older program's manifest does not know them).
-LATER_ENTITIES = ("shift", "work_calendar", "shift_assignment", "roster_override", "skill", "employee_skill")
+LATER_ENTITIES = ("shift", "work_calendar", "shift_assignment", "roster_override", "skill", "employee_skill", "penalty_rule", "violation")
 META_COLUMNS = ["id", "ver", "deleted", "deleted_at", "deleted_by", "created_at", "created_by", "updated_at", "updated_by"]
 
 
@@ -325,6 +329,16 @@ class Registry:
             emp = self._live("employee", row.get("employee_id"), "the employee")
             skill = self._live("skill", row.get("skill_id"), "the skill")
             skills.check_employee_skill(row, emp["code"], skill["code"])
+        elif entity == "penalty_rule":
+            discipline.check_rule(row)
+        elif entity == "violation":
+            emp = self._live("employee", row.get("employee_id"), "the employee")
+            rule = self._live("penalty_rule", row.get("rule_id"), "the rule of the penalty schedule")
+            month = str(row.get("work_date") or "")[:7]
+            others = self.db.execute("SELECT decision FROM violation WHERE employee_id = ? AND deleted = 0 AND status = 'approved' AND substr(work_date, 1, 7) = ? AND id != ?",
+                                     (row["employee_id"], month, cur["id"] if cur else "")).fetchall()
+            deducted = sum(discipline.parse_penalty(r[0])[1] for r in others if r[0])
+            discipline.check_violation(row, cur, emp["code"], rule["code"], today, deducted)
 
     def _check_delete(self, entity, cur):
         checks = {
@@ -337,10 +351,13 @@ class Registry:
             "shift_assignment": [], "roster_override": [],
             "skill": [("employee_skill", "skill_id", "people qualified for it")],
             "employee_skill": [],
+            "penalty_rule": [("violation", "rule_id", "violations decided under it")], "violation": [],
         }[entity]
         try:
             if entity == "shift_assignment":
                 scheduling.check_assignment_delete(cur, self.today())
+            elif entity == "violation":
+                discipline.check_violation_delete(cur)
             elif entity == "roster_override":
                 emp = self.by_id("employee", cur["employee_id"])
                 scheduling.check_override(cur, cur, emp["code"] if emp else "", self.today(), deleting=True)

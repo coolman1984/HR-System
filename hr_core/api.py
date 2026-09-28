@@ -81,22 +81,22 @@ def make_handler(service, product=None):
     def recycle(h, body, user):
         return 200, service.recycle_bin(user, h.ip)
 
-    @route("GET", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)")
+    @route("GET", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)")
     def list_(h, body, user, entity):
         return 200, service.list(user, entity, h.query.get("deleted") == "1", h.ip)
 
-    @route("PUT", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)")
+    @route("PUT", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)")
     def put(h, body, user, entity, code):
         return 200, service.save(user, entity, code, body.get("fields") or {}, body.get("expected_ver"), h.ip)
 
-    @route("DELETE", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)")
+    @route("DELETE", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)")
     def delete(h, body, user, entity, code):
         ver = h.query.get("ver")
         if not (ver or "").isdigit():
             raise HttpError(409, "ver.required", "send the version you are deleting (?ver=)")
         return 200, {"seq": service.delete(user, entity, code, int(ver), h.query.get("type"), h.ip)}
 
-    @route("POST", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)/restore")
+    @route("POST", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)/restore")
     def restore(h, body, user, entity, code):
         return 200, {"seq": service.restore(user, entity, code, body.get("type"), h.ip)}
 
@@ -109,7 +109,12 @@ def make_handler(service, product=None):
     @route("GET", "/api/schedule/compare")
     def schedule_compare(h, body, user):
         rows = attendance.engine.current_rows() if attendance is not None else []
-        return 200, service.compare(user, h.query.get("from", ""), h.query.get("to", ""), rows, h.ip)
+        return 200, service.compare(user, h.query.get("from", ""), h.query.get("to", ""), rows, h.ip, h.query.get("employee") or None)
+
+    @route("POST", "/api/discipline/propose")
+    def discipline_propose(h, body, user):
+        rows = attendance.engine.current_rows() if attendance is not None else []
+        return 200, service.propose_violations(user, body.get("from", ""), body.get("to", ""), rows, h.ip)
 
     @route("POST", "/api/schedule/swap")
     def schedule_swap(h, body, user):

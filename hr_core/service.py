@@ -13,15 +13,15 @@ from .auth import PERMISSIONS, Auth, AuthError
 from .backup import Backups, BackupError, recover_lost_journal
 from .device import Device
 from .journal import Journal
-from . import scheduling, skills
+from . import discipline, scheduling, skills
 from .registry import ENTITIES, Conflict, Registry, RegistryError
 
 WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr.org.write", "employee": "hr.employees.write",
               "shift": "hr.shifts.write", "work_calendar": "hr.shifts.write", "shift_assignment": "hr.shifts.write", "roster_override": "hr.shifts.write",
-              "skill": "hr.skills.write", "employee_skill": "hr.skills.write"}
+              "skill": "hr.skills.write", "employee_skill": "hr.skills.write", "penalty_rule": "hr.discipline.write", "violation": "hr.discipline.write"}
 READ_PERM = {"org_unit": "hr.org.read", "job": "hr.org.read", "position": "hr.org.read", "employee": "hr.employees.read",
              "shift": "hr.shifts.read", "work_calendar": "hr.shifts.read", "shift_assignment": "hr.shifts.read", "roster_override": "hr.shifts.read",
-             "skill": "hr.skills.read", "employee_skill": "hr.skills.read"}
+             "skill": "hr.skills.read", "employee_skill": "hr.skills.read", "penalty_rule": "hr.discipline.read", "violation": "hr.discipline.read"}
 
 
 class HRService:
@@ -104,12 +104,18 @@ class HRService:
         """Create (no current record) or change (expected_ver REQUIRED: a stale or missing version is a 409,
         never a silent overwrite)."""
         self._entity(entity)
-        self.require(user, WRITE_PERM[entity], ip, f"{entity}:{code}")
+        deciding = entity == "violation" and (fields.get("status") or "proposed") != "proposed"
+        # deciding a violation is its own right (hr.discipline.approve), apart from proposing it (separation of duties)
+        self.require(user, "hr.discipline.approve" if deciding else WRITE_PERM[entity], ip, f"{entity}:{code}")
         cur = self.registry.get(entity, code, org_type=fields.get("type") if entity == "org_unit" else None, include_deleted=True)
         if cur and expected_ver is None:
             raise Conflict("ver.required", f"{entity} {code} exists: send the version you edited (expected_ver)")
         if not cur and expected_ver is not None:
             raise Conflict("ver.conflict", f"{entity} {code} does not exist any more")
+        if deciding:  # who decided and when come from the server, never from the form
+            fields = dict(fields, decided_by=user["code"], decided_on=self.registry.today())
+        elif entity == "violation":
+            fields = {k: v for k, v in fields.items() if k not in ("decision", "decided_by", "decided_on")}
         if entity == "employee_skill" and cur and fields.get("certified_on") and fields["certified_on"] != cur.get("certified_on") \
                 and fields.get("expires_on") == cur.get("expires_on"):
             # recertified with the old expiry still in the form: if that expiry came from the skill's validity, it moves too
@@ -209,11 +215,44 @@ class HRService:
         except scheduling.ScheduleError as exc:
             raise RegistryError(exc.code, str(exc)) from None
 
-    def compare(self, user, first, last, attendance_rows, ip=None):
-        """Planned days against attendance (needs both rights: it shows both)."""
+    def compare(self, user, first, last, attendance_rows, ip=None, employee_code=None):
+        """Planned days against attendance (needs both rights: it shows both); one person's days with employee_code."""
         self.require(user, "hr.attendance.read", ip, "schedule.compare")
-        days = self.schedule(user, first, last, None, ip)
+        days = self.schedule(user, first, last, employee_code, ip)
         return scheduling.compare(days, attendance_rows, scheduling.Schedule(self.registry).employees)
+
+    def propose_violations(self, user, first, last, attendance_rows, ip=None):
+        """Reads the planned days against attendance and proposes one violation per person, day and rule of the
+        penalty schedule, with the schedule's penalty for that repeat. Running it again proposes nothing twice
+        (codes are per person, day and rule). Decisions stay with the people who have the right to decide."""
+        self.require(user, "hr.discipline.write", ip, "discipline.propose")
+        compared = self.compare(user, first, last, attendance_rows, ip)
+        rules = [r for r in self.registry.list("penalty_rule") if not r["deleted"] and r.get("active", 1)]
+        employees = {e["id"]: e for e in self.registry.list("employee") if not e["deleted"]}
+        found = discipline.findings(compared["days"], attendance_rows, rules, employees)
+        existing = {v["code"] for v in self.registry.list("violation", include_deleted=True)}
+        history = [v for v in self.registry.list("violation") if not v["deleted"] and v["status"] != "waived"]
+        ops, made = [], []
+        for emp, day, kind, minutes in sorted(found, key=lambda x: (x[1], x[0]["code"])):
+            for rule in rules:
+                if rule["violation"] != kind or minutes < (rule.get("threshold_minutes") or 0):
+                    continue
+                code = f"{emp['code']}-{day}-{rule['code']}"
+                if code in existing:
+                    continue
+                window_start = scheduling.iso(day, "day").toordinal() - (rule.get("window_days") or 30)
+                before = [v for v in history if v["employee_id"] == emp["id"] and v["rule_id"] == rule["id"] and v["work_date"] < day
+                          and scheduling.iso(v["work_date"], "day").toordinal() > window_start]
+                occurrence = len(before) + 1
+                fields = {"employee_id": emp["id"], "rule_id": rule["id"], "work_date": day, "minutes": minutes, "occurrence": occurrence,
+                          "proposed": discipline.proposed_for(rule, occurrence), "status": "proposed", "source": "attendance"}
+                ops.append(self.registry.op_put("violation", code, fields))
+                history.append({**fields, "id": code, "code": code})
+                existing.add(code)
+                made.append(code)
+        seq = self._commit(user, ip, f"Violations proposed from attendance {first} to {last}: {len(made)}", ops, "discipline.proposed",
+                           "violation", f"{first}/{last}") if ops else None
+        return {"seq": seq, "proposed": made, "checked_days": len(compared["days"])}
 
     def swap(self, user, work_date, code_a, code_b, reason, ip=None):
         """Two people exchange their shifts of one day: two day changes in ONE save (both or neither)."""

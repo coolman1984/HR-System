@@ -133,6 +133,13 @@ MUTATIONS = [
      'done = status == 200 and "error" not in reply and not reply.get("duplicate_upload")', "done = True", "TEST_HR_DELIVERY.py"),
     ("a file only Excel can open is handed to the engine on a PC without Excel", "hr_core/api.py",
      "            if excel_installed() is not False:\n                return False", "            if True:\n                return False", "TEST_HR_DELIVERY.py"),
+    # phase 6: discipline
+    ("whoever proposes a violation may also decide it", "hr_core/service.py",
+     'self.require(user, "hr.discipline.approve" if deciding else WRITE_PERM[entity], ip, f"{entity}:{code}")', 'self.require(user, WRITE_PERM[entity], ip, f"{entity}:{code}")', "TEST_HR_DISCIPLINE.py"),
+    ("the deductions of a month are not capped", "hr_core/discipline.py",
+     "    if days and deducted_in_month + days > MAX_MONTH_DEDUCTION:", "    if False:", "TEST_HR_DISCIPLINE.py"),
+    ("a decided violation can be changed", "hr_core/discipline.py",
+     '    if cur and not cur.get("deleted") and cur.get("status") in ("approved", "waived"):', "    if False:", "TEST_HR_DISCIPLINE.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"overtime": {"depends_on": ["shifts", "attendance"], "status": "planned"', '"overtime": {"depends_on": ["shifts", "attendance"], "status": "built"', "TEST_DOCS_CURRENT.py"),

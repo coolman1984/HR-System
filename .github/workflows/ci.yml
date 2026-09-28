@@ -30,6 +30,7 @@ jobs:
       - run: python TEST_HR_SECURITY.py
       - run: python TEST_HR_DELIVERY.py
       - run: python TEST_HR_WORKFORCE.py
+      - run: python TEST_HR_DISCIPLINE.py
       - run: python TEST_DOCS_CURRENT.py
       - run: python migration/mutations.py
       - run: python BUILD_PROJECT.py

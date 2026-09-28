@@ -82,3 +82,12 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L22** A consumer that loses HR keeps working on its last-known-good mirror and shows its age; it does not stop the
   factory (phase 3 contract).
 - **L23** Extract a shared library only when two real applications use it.
+
+## 2026-09-28 — screens, demo data, separate duties
+- A test suite that never runs the screens says nothing about them: open every changed screen in a real browser (CDP,
+  headless or visible) and read its console before calling it done; check `app.js` as a module (`.mjs` copy).
+- Demo data is made by the product's own operations (importer, service, engine over HTTP, backups), each by the person
+  who would do it, with the rules' clock moved only where history must be written on its own date. Then every figure a
+  client sees is one the product really produces.
+- Separate duties are separate checks chosen by what a request does (propose vs decide), not by the table it writes.
+- Measure what is drawn (padding, icons, the column's font) when sizing columns; keep what the person chose.

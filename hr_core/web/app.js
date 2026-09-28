@@ -161,17 +161,17 @@ function showPassword(forced) {
 async function refs(force) {
   if (S.refs && !force) return S.refs;
   const get = (e, perm) => (can(perm) ? api("GET", "/api/" + e).catch(() => []) : Promise.resolve([]));
-  const [units, jobs, positions, employees, shifts, calendars, skillList] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"),
-    get("employee", "hr.employees.read"), get("shift", "hr.shifts.read"), get("work_calendar", "hr.shifts.read"), get("skill", "hr.skills.read")]);
-  const byId = new Map([...units, ...jobs, ...positions, ...employees, ...shifts, ...calendars, ...skillList].map((r) => [r.id, r]));
+  const [units, jobs, positions, employees, shifts, calendars, skillList, rules] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"),
+    get("employee", "hr.employees.read"), get("shift", "hr.shifts.read"), get("work_calendar", "hr.shifts.read"), get("skill", "hr.skills.read"), get("penalty_rule", "hr.discipline.read")]);
+  const byId = new Map([...units, ...jobs, ...positions, ...employees, ...shifts, ...calendars, ...skillList, ...rules].map((r) => [r.id, r]));
   const name = (r) => (r ? r.name || r.title || r.preferred_name || (r.job_id && byId.get(r.job_id) ? byId.get(r.job_id).title : "") || r.code : "");
   const label = (r) => (r ? r.code + " · " + name(r) : "");
   const unitOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.org_unit_id) : null; };
   const jobOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.job_id) : null; };
-  S.refs = { units, jobs, positions, employees, shifts, calendars, skills: skillList, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
+  S.refs = { units, jobs, positions, employees, shifts, calendars, skills: skillList, rules, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
   return S.refs;
 }
-const changed = () => { S.refs = null; };
+const changed = () => { S.refs = null; S.findings = null; };
 
 // ------------------------------------------------------------------ record editor: one dialog for every register
 const FORM = {
@@ -192,11 +192,16 @@ const FORM = {
   skill: [["sec.skill", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["category", {}], ["validity_months", { num: true, hint: "hint.validity" }]]]],
   employee_skill: [["sec.qualification", [["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["skill_id", { req: true, ref: (R) => R.skills, fixed: true }],
     ["level", { req: true, choices: ["1", "2", "3", "4"], num: true, prefix: "level." }], ["certified_on", { req: true, date: true }], ["expires_on", { date: true, hint: "hint.expiry" }], ["evidence", { span: 2 }]]]],
+  penalty_rule: [["sec.penalty_rule", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["violation", { req: true, choices: ["late", "early_leave", "absence", "no_record", "misconduct"], prefix: "violation." }],
+    ["threshold_minutes", { num: true, hint: "hint.threshold" }], ["window_days", { num: true, hint: "hint.window" }], ["active", { yesno: true }], ["steps", { req: true, ltr: true, span: 2, hint: "hint.steps" }]]]],
+  violation: [["sec.violation", [["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["rule_id", { req: true, ref: (R) => R.rules, fixed: true }],
+    ["work_date", { req: true, date: true, fixed: true }], ["minutes", { num: true }], ["note", { span: 2, hint: "hint.violation_note" }]]]],
 };
 // records whose code is made from their content (one per person and day, per person and skill ...)
 const AUTO_CODE = {
   shift_assignment: (v, R) => { const e = R.byId.get(v.employee_id); return e && v.valid_from ? e.code + "-" + v.valid_from + "-" + (v.kind === "temporary" ? "T" : "R") : ""; },
   employee_skill: (v, R) => { const e = R.byId.get(v.employee_id), k = R.byId.get(v.skill_id); return e && k ? e.code + "-" + k.code : ""; },
+  violation: (v, R) => { const e = R.byId.get(v.employee_id), k = R.byId.get(v.rule_id); return e && k && v.work_date ? e.code + "-" + v.work_date + "-" + k.code : ""; },
 };
 const localToday = () => ui.isoDate(new Date());
 async function editRecord(entity, row, preset = {}) {
@@ -226,17 +231,18 @@ async function editRecord(entity, row, preset = {}) {
   const out = h("div");
   return new Promise((resolve) => {
     ui.dialog({ title: row ? t("edit_title", { code: row.code }) : t("new." + entity), subtitle: row ? t("hint.version", { ver: row.ver }) : null,
-      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card", shift: "clock", work_calendar: "calendar", shift_assignment: "calendar-check", skill: "tag", employee_skill: "shield" }[entity],
+      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card", shift: "clock", work_calendar: "calendar", shift_assignment: "calendar-check", skill: "tag", employee_skill: "shield", penalty_rule: "scale", violation: "flag" }[entity],
       width: entity === "employee" ? 680 : 560,
-      body: h("div", { class: "hr-editor" }, sections, out), onClose: (r) => resolve(r === true),
+      body: h("div", { class: "hr-editor" }, guideAtLeast("full") && has("tip." + entity) ? ui.banner("info", t("tip." + entity), { title: t("guide.tip") }) : null, sections, out), onClose: (r) => resolve(r === true),
       actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
         const values = {};
         const nums = new Set(FORM[entity].flatMap(([, fs]) => fs.filter(([, o]) => o.num).map(([f]) => f)));
         for (const [f, c] of Object.entries(inputs)) {
           if (f === "code") continue;
           const raw = c.getValue ? c.getValue() : c.value;
-          values[f] = raw === "" && !c.getValue ? null : f === "critical" || nums.has(f) ? Number(raw) : raw;
+          values[f] = raw === "" && !c.getValue ? null : f === "critical" || f === "active" || nums.has(f) ? Number(raw) : raw;
         }
+        if (entity === "violation" && !row) Object.assign(values, { status: "proposed", source: "manual" });
         if (entity === "org_unit" && row) values.type = row.type;
         if (entity === "org_unit" && values.type === "site" && !values.parent_id && R.company) values.parent_id = R.company.id;  // a site belongs to the company
         const code = inputs.code ? inputs.code.value.trim() : row ? row.code : AUTO_CODE[entity](values, R);
@@ -333,6 +339,7 @@ function employeesScreen({ shell }) {
       return;
     }
     const e = sel[0], pos = R.byId.get(e.position_id), unit = R.unitOf(e), job = R.jobOf(e), mgr = R.byId.get(e.manager_id), site = R.byId.get(e.home_site_id);
+    recordWarnings(e.code).then((n) => { if (n && detail.firstChild && g.selected()[0] === e) detail.insertBefore(n, detail.children[1] || null); });
     const reports = R.employees.filter((x) => x.manager_id === e.id);
     ui.clear(detail,
       h("div", { class: "hr-profile" }, ui.avatar(e.preferred_name || e.code, 56),
@@ -345,8 +352,22 @@ function employeesScreen({ shell }) {
           [t("field.org_unit_id"), unit ? R.label(unit) : null], [t("field.home_site_id"), site ? R.label(site) : null], [t("field.manager_id"), mgr ? R.label(mgr) : null]])),
           ui.section(t("emp.reports", { n: reports.length }), reports.length ? h("div", { class: "hr-people" }, reports.map((x) => h("span", { class: "hr-person" }, ui.avatar(x.preferred_name || x.code, 20), h("span", { text: x.preferred_name || x.code })))) : h("span", { class: "eco-muted", text: t("none") }))) },
         { id: "r", label: t("tab.record"), icon: "history", render: () => h("div", {}, ui.section(t("tab.record"), recordFacts(e)), h("div", { class: "hr-pad" }, ui.banner("info", t("emp.history_note")))) },
-      ]),
-      !e.deleted && can("hr.employees.write") ? h("div", { class: "hr-pad hr-row" }, ui.button({ label: t("edit"), icon: "edit", onClick: () => edit(e) })) : null);
+        can("hr.discipline.read") ? { id: "d", label: t("tab.discipline"), icon: "scale", render: () => {
+          const box = h("div", { class: "hr-pad" }, h("span", { class: "eco-spinner" }));
+          api("GET", "/api/violation").then((all) => {
+            const mine = all.filter((v) => v.employee_id === e.id).sort((a, b) => b.work_date.localeCompare(a.work_date));
+            const days = mine.filter((v) => v.status === "approved" && (v.decision || "").startsWith("deduct:")).reduce((s, v) => s + Number(v.decision.slice(7)), 0);
+            ui.clear(box, mine.length ? h("div", { class: "hr-stack" }, ui.kpiStrip([{ label: t("disc.total"), value: mine.length }, { label: t("vstatus.proposed"), value: mine.filter((v) => v.status === "proposed").length, status: "warn" },
+              { label: t("field.deducted_days"), value: days, status: days ? "bad" : "ok" }]),
+            h("ul", { class: "hr-list hr-list-tight" }, mine.slice(0, 20).map((v) => h("li", {}, ui.statusChip(VSTATE[v.status], t("vstatus." + v.status)),
+              h("div", {}, h("b", { text: (R.byId.get(v.rule_id) || {}).name || "" }), h("small", { class: "eco-muted", text: v.work_date + (v.minutes ? " · " + t("disc.minutes_n", { n: v.minutes }) : "") })),
+              h("span", { class: "eco-grow" }), h("span", { text: penaltyText(v.decision || v.proposed) }))))) : ui.empty({ icon: "check-circle", title: t("disc.none_for_person") }));
+          }).catch((err) => ui.clear(box, ui.banner("bad", err.message)));
+          return box;
+        } } : null,
+      ].filter(Boolean)),
+      h("div", { class: "hr-pad hr-row" }, !e.deleted && can("hr.employees.write") ? ui.button({ label: t("edit"), icon: "edit", onClick: () => edit(e) }) : null,
+        shell.screens.EMP2010 ? ui.button({ label: t("nav.journey"), icon: "trending-up", kind: "subtle", onClick: () => shell.open("EMP2010", { employee: e.id }) }) : null));
   }
   async function load() {
     const t0 = performance.now();
@@ -369,6 +390,175 @@ function employeesScreen({ shell }) {
   load();
   return { el: sc.el };
 }
+// ------------------------------------------------------------------ Employee journey: one person's whole story, with a time-lapse
+// Everything the modules know about one person, on one timeline: joining, placement, shifts and day changes, qualifications,
+// every attended day, lateness, absences, leave, violations and decisions, and what is planned ahead. The player walks
+// through it week by week and the figures add up as it goes (for a review, an appeal, or to show a client the product).
+function journeyScreen({ shell, params }) {
+  let R = null, E = null, events = [], weeks = [], pos = 0, timer = null, activity = [];
+  const pickEmp = ui.select({ options: [], width: "320px" });
+  const top = h("div", { class: "hr-journey-top" });
+  const player = h("div", { class: "hr-journey-player" });
+  const figures = h("div", { class: "hr-journey-figures" });
+  const story = h("div", { class: "hr-journey-story" });
+  const chart = h("div", { class: "hr-journey-chart" });
+  const line = h("ol", { class: "hr-timeline" });
+  const acts = h("div");
+  const body = h("div", { class: "hr-page hr-journey" }, top, player, figures, h("div", { class: "hr-journey-grid" },
+    ui.card({ title: t("jr.timeline"), icon: "history", tone: 2, cls: "hr-flush", body: h("div", { class: "hr-timeline-box" }, line) }),
+    h("div", { class: "hr-dash-col" }, ui.card({ title: t("jr.week"), icon: "sparkles", tone: 1, body: story }), ui.card({ title: t("jr.hours"), icon: "chart", tone: 5, body: chart }),
+      ui.card({ title: t("jr.activities"), subtitle: t("jr.activities_sub"), icon: "activity", tone: 3, cls: "hr-flush", body: acts }))));
+  const sc = screen({ code: "EMP2010", title: t("nav.journey"), path: [t("g.people")], shell, headExtra: pickEmp,
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", print: () => print(), printLabel: t("print") }, body });
+  pickEmp.addEventListener("change", () => { stop(); load(); });
+  const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString(S.lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const ev = (date, kind, icon, tone, title, detail, extra = {}) => events.push({ date, kind, icon, tone, title, detail, ...extra });
+
+  async function load() {
+    stop();
+    ui.clear(line, h("li", {}, h("span", { class: "eco-spinner" })));
+    try {
+      R = R || await refs(true);
+      if (!pickEmp.options.length) {
+        pickEmp.replaceChildren(...R.employees.slice().sort((a, b) => (b.hire_date || "").localeCompare(a.hire_date || "")).map((e) => h("option", { value: e.id, text: e.code + " · " + (e.preferred_name || "") })));
+        pickEmp.value = (params && params.employee) || (R.employees.find((e) => e.code === "E000900") || {}).id || pickEmp.options[0].value;
+      }
+      E = R.byId.get(pickEmp.value);
+      events = [];
+      const today = localToday(), start = E.hire_date && E.hire_date > addDays(today, -365) ? E.hire_date : addDays(today, -120);
+      const get = (perm, path) => (can(perm) ? api("GET", path).catch(() => []) : Promise.resolve([]));
+      const [asg, ovr, quals, viol, audit, users] = await Promise.all([get("hr.shifts.read", "/api/shift_assignment"), get("hr.shifts.read", "/api/roster_override"),
+        get("hr.skills.read", "/api/employee_skill"), get("hr.discipline.read", "/api/violation"), get("admin.audit.read", "/api/admin/audit?limit=1000"), get("admin.users.manage", "/api/admin/users")]);
+      // attended days: the comparison, in slices of 90 days (the planned schedule answers up to 93 days at a time)
+      const days = [];
+      if (can("hr.attendance.read") && can("hr.shifts.read")) {
+        for (let a = start; a < today; a = addDays(a, 90)) {
+          const b = addDays(a, 89) < addDays(today, -1) ? addDays(a, 89) : addDays(today, -1);
+          const res = await api("GET", "/api/schedule/compare?from=" + a + "&to=" + b + "&employee=" + encodeURIComponent(E.code)).catch(() => ({ days: [] }));
+          days.push(...res.days);
+        }
+      }
+      const ahead = can("hr.shifts.read") ? await api("GET", "/api/schedule?from=" + today + "&to=" + addDays(today, 13) + "&employee=" + encodeURIComponent(E.code)).catch(() => []) : [];
+      // the story, fact by fact
+      const job = R.jobOf(E), unit = R.unitOf(E), mgr = R.byId.get(E.manager_id);
+      if (E.hire_date) ev(E.hire_date, "joined", "user-plus", 2, t("jr.joined", { job: job ? R.name(job) : t("emp.no_job") }), [unit && R.name(unit), mgr && t("jr.reports_to", { name: mgr.preferred_name || mgr.code })].filter(Boolean).join(" · "));
+      const team = R.employees.filter((x) => x.manager_id === E.id && x.employment_status !== "Terminated");
+      if (team.length && E.hire_date) ev(E.hire_date, "team", "users", 1, t("jr.team", { n: team.length }), team.slice(0, 6).map((x) => x.preferred_name || x.code).join(", ") + (team.length > 6 ? " …" : ""));
+      const account = users.find((u) => u.display_name && [E.preferred_name, E.legal_name].includes(u.display_name));
+      if (account) ev(E.hire_date || start, "account", "key", 1, t("jr.account", { user: account.code }), profileName(account.profile));
+      for (const a of asg.filter((x) => x.employee_id === E.id)) {
+        const s = R.byId.get(a.shift_id), c = R.byId.get(a.calendar_id);
+        ev(a.valid_from, "shift", "clock", 5, t(a.kind === "temporary" ? "jr.temp_shift" : "jr.shift", { shift: s ? s.name + " (" + s.start_time + "–" + s.end_time + ")" : "" }), [c && c.name, a.note].filter(Boolean).join(" · "), { future: a.valid_from > today });
+        if (a.valid_to) ev(a.valid_to, "shift_end", "clock", 5, t("jr.shift_end", { shift: s ? s.name : "" }), "", { future: a.valid_to > today });
+      }
+      for (const o of ovr.filter((x) => x.employee_id === E.id)) ev(o.work_date, "change", "calendar", 4, o.shift_id ? t("jr.day_changed", { shift: (R.byId.get(o.shift_id) || {}).name || "" }) : t("jr.day_off"), o.reason, { future: o.work_date >= today });
+      for (const q of quals.filter((x) => x.employee_id === E.id)) {
+        const k = R.byId.get(q.skill_id) || {};
+        ev(q.certified_on, "skill", "shield", 2, t("jr.certified", { skill: k.name || "", level: t("level." + q.level) }), q.evidence || "", { future: q.certified_on > today });
+        if (q.expires_on) ev(q.expires_on, "skill_expiry", "alert", q.expires_on < today ? 3 : 4, t(q.expires_on < today ? "jr.expired" : "jr.expires", { skill: k.name || "" }), "", { future: q.expires_on > today });
+      }
+      let leaveRun = null;
+      for (const d of days.sort((a, b) => a.work_date.localeCompare(b.work_date))) {
+        if (d.verdict === "leave") { if (leaveRun && addDays(leaveRun.end, 1) >= d.work_date) { leaveRun.end = d.work_date; leaveRun.n++; } else { leaveRun = { start: d.work_date, end: d.work_date, n: 1 }; events.push(Object.assign({ date: d.work_date, kind: "leave", icon: "calendar", tone: 4, title: "", detail: "" }, { run: leaveRun })); } continue; }
+        if (d.verdict === "absent") ev(d.work_date, "absent", "x-octagon", 3, t("jr.absent"), d.shift_code ? t("jr.planned", { shift: d.shift_code }) : "");
+        else if (d.verdict === "no_record") ev(d.work_date, "no_record", "alert", 4, t("jr.no_record"), "");
+        else if (d.verdict === "as_planned" || d.verdict === "worked_off_day") {
+          events.push({ date: d.work_date, kind: "worked", minutes: Number(d.worked_minutes) || 0, silent: true });
+          if (Number(d.late_minutes) > 0) ev(d.work_date, "late", "clock", 4, t("jr.late", { n: Math.round(d.late_minutes) }), d.start ? t("jr.shift_started", { time: d.start.slice(11) }) : "");
+          if (d.verdict === "worked_off_day") ev(d.work_date, "extra", "zap", 1, t("jr.worked_off_day"), "");
+        }
+      }
+      for (const e of events.filter((x) => x.kind === "leave")) { e.title = t("jr.leave", { n: e.run.n }); e.detail = e.run.start === e.run.end ? "" : t("jr.until", { date: fmtDate(e.run.end) }); }
+      for (const v of viol.filter((x) => x.employee_id === E.id)) {
+        const rule = R.byId.get(v.rule_id) || {};
+        ev(v.work_date, "violation", "flag", 3, t("jr.violation", { what: t("violation." + rule.violation) }), t("jr.proposed", { penalty: penaltyText(v.proposed), n: v.occurrence || 1 }));
+        if (v.status !== "proposed") ev(v.decided_on, v.status === "approved" ? "penalty" : "waived", "scale", v.status === "approved" ? 3 : 5,
+          v.status === "approved" ? t("jr.penalty", { penalty: penaltyText(v.decision) }) : t("jr.waived"), [v.decided_by && t("jr.by", { who: v.decided_by }), v.note].filter(Boolean).join(" · "),
+          { deducted: v.status === "approved" && (v.decision || "").startsWith("deduct:") ? Number(v.decision.slice(7)) : 0 });
+      }
+      for (const d of ahead.filter((x) => x.status === "work")) events.push({ date: d.work_date, kind: "planned", silent: true, future: true, minutes: d.paid_minutes || 0 });
+      activity = account ? audit.filter((x) => x.actor === account.code && !["login.ok", "change.refused", "permission.denied"].includes(x.event)).slice(0, 40) : [];
+      if (E.termination_date) ev(E.termination_date, "left", "logout", 3, t("jr.left"), "");
+      events.sort((a, b) => a.date.localeCompare(b.date) || (a.silent ? 1 : 0) - (b.silent ? 1 : 0));
+      // weeks of the time-lapse: from the first fact to two weeks ahead
+      const first = weekStart(events.length ? events[0].date : start), last = addDays(today, 13);
+      weeks = [];
+      for (let w = first; w <= last; w = addDays(w, 7)) weeks.push(w);
+      pos = weeks.findIndex((w) => addDays(w, 6) >= today);
+      if (pos < 0) pos = weeks.length - 1;
+      ui.clear(acts, activity.length ? h("ul", { class: "hr-activity" }, activity.map((a) => h("li", {}, h("span", { class: "hr-dot" }), h("div", {}, h("b", { text: eventText(a) }),
+        h("small", { class: "eco-muted" }, ui.ltr((a.at || "").slice(0, 16).replace("T", " ")))))))
+        : h("div", { class: "hr-pad2 eco-muted", text: account ? t("none") : t("jr.no_account") }));
+      drawTop(account, team);
+      drawPlayer();
+      draw();
+    } catch (e) { ui.clear(line, h("li", {}, ui.banner("bad", e.message))); }
+  }
+  function drawTop(account, team) {
+    const job = R.jobOf(E), unit = R.unitOf(E);
+    ui.clear(top, h("div", { class: "hr-profile hr-journey-head" }, ui.avatar(E.preferred_name || E.code, 64),
+      h("div", { class: "hr-profile-text" }, h("h2", { text: E.preferred_name || E.code }), h("div", { class: "eco-muted", text: [E.legal_name, job && R.name(job), unit && R.name(unit)].filter(Boolean).join(" · ") }),
+        h("div", { class: "hr-row" }, ui.statusChip(STATUS_ST[E.employment_status] || "neutral", value(E.employment_status)), h("span", { class: "eco-code" }, ui.ltr(E.code)),
+          E.hire_date ? ui.badge(t("jr.since", { date: fmtDate(E.hire_date) }), "accent", "calendar") : null, account ? ui.badge(t("jr.user", { user: account.code }), "info", "key") : null,
+          team.length ? ui.badge(t("jr.team_n", { n: team.length }), "neutral", "users") : null))));
+  }
+  function drawPlayer() {
+    const range = h("input", { type: "range", min: "0", max: String(Math.max(0, weeks.length - 1)), value: String(pos), class: "hr-journey-range", "aria-label": t("jr.week") });
+    range.addEventListener("input", () => { stop(); pos = Number(range.value); draw(); });
+    const play = ui.button({ label: t("jr.play"), icon: "play", kind: "primary", onClick: () => (timer ? stop() : startPlay()) });
+    play.classList.add("hr-play");
+    ui.clear(player, h("div", { class: "hr-row" }, play, ui.button({ icon: ui.isRTL() ? "chev-right" : "chev-left", title: t("plan.prev"), onClick: () => { stop(); pos = Math.max(0, pos - 1); draw(); } }),
+      ui.button({ icon: ui.isRTL() ? "chev-left" : "chev-right", title: t("plan.next"), onClick: () => { stop(); pos = Math.min(weeks.length - 1, pos + 1); draw(); } }),
+      h("strong", { class: "hr-journey-date" }), h("span", { class: "eco-grow" }), ui.badge(t("jr.today_marker"), "accent", "flag")), range);
+    player.range = range; player.play = play;
+  }
+  function startPlay() {
+    if (pos >= weeks.length - 1) pos = 0;
+    player.play.replaceChildren(ui.icon("pause", 15), h("span", { text: t("jr.pause") }));
+    timer = setInterval(() => { if (pos >= weeks.length - 1) { stop(); return; } pos++; draw(); }, 1100);
+  }
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (player.play) player.play.replaceChildren(ui.icon("play", 15), h("span", { text: t("jr.play") }));
+  }
+  function draw() {
+    if (!weeks.length) return;
+    const end = addDays(weeks[pos], 6), today = localToday();
+    player.range.value = String(pos);
+    player.querySelector(".hr-journey-date").textContent = t("jr.week_of", { from: fmtDate(weeks[pos]), to: fmtDate(end) }) + (weeks[pos] > today ? " · " + t("jr.ahead") : "");
+    const upto = events.filter((e) => e.date <= end);
+    const past = upto.filter((e) => !e.future || e.date <= today);
+    const sum = (k) => past.filter((e) => e.kind === k).length;
+    const worked = past.filter((e) => e.kind === "worked");
+    const hoursTotal = Math.round(worked.reduce((s, e) => s + e.minutes, 0) / 60);
+    const deducted = past.filter((e) => e.deducted).reduce((s, e) => s + e.deducted, 0);
+    const skillsHeld = past.filter((e) => e.kind === "skill").length - past.filter((e) => e.kind === "skill_expiry" && e.date <= end && e.date < today).length;
+    ui.clear(figures, ui.kpiStrip([{ label: t("jr.k.days"), value: worked.length, status: "ok" }, { label: t("jr.k.hours"), value: hoursTotal, unit: t("unit.h") },
+      { label: t("jr.k.late"), value: sum("late"), status: sum("late") ? "warn" : null }, { label: t("jr.k.absent"), value: sum("absent"), status: sum("absent") ? "bad" : null },
+      { label: t("jr.k.leave"), value: past.filter((e) => e.kind === "leave").reduce((s, e) => s + e.run.n, 0) },
+      { label: t("jr.k.penalties"), value: sum("penalty"), status: sum("penalty") ? "bad" : null }, { label: t("field.deducted_days"), value: deducted, status: deducted ? "bad" : null },
+      { label: t("jr.k.skills"), value: Math.max(0, skillsHeld), status: "info" }]));
+    // this week, told in words
+    const wk = events.filter((e) => e.date >= weeks[pos] && e.date <= end && !e.silent);
+    const wkWorked = events.filter((e) => e.kind === "worked" && e.date >= weeks[pos] && e.date <= end);
+    const planned = events.filter((e) => e.kind === "planned" && e.date >= weeks[pos] && e.date <= end);
+    ui.clear(story, h("p", { class: "hr-journey-summary", text: weeks[pos] > today ? t("jr.story_ahead", { n: planned.length }) : t("jr.story", { n: wkWorked.length, h: Math.round(wkWorked.reduce((s, e) => s + e.minutes, 0) / 60) }) }),
+      wk.length ? h("ul", { class: "hr-journey-list" }, wk.map((e) => h("li", { class: "eco-tone-" + e.tone }, h("span", { class: "hr-tl-ic" }, ui.icon(e.icon, 14)), h("div", {}, h("b", { text: e.title }), h("small", { class: "eco-muted", text: fmtDate(e.date) + (e.detail ? " · " + e.detail : "") })))))
+        : h("p", { class: "eco-muted", text: t("jr.quiet") }));
+    // hours per week up to this week
+    const shown = weeks.slice(Math.max(0, pos - 11), pos + 1);
+    ui.clear(chart, ui.barChart({ labels: shown.map((w) => w.slice(5).replace("-", "/")), series: [{ label: t("jr.hours"), values: shown.map((w) => Math.round(events.filter((e) => (e.kind === "worked" || (e.kind === "planned" && w > today)) && e.date >= w && e.date <= addDays(w, 6)).reduce((s, e) => s + e.minutes, 0) / 60)) }], height: 190, width: 620 }));
+    // the timeline up to now (newest first), the current week highlighted, the future faint
+    const shownEvents = events.filter((e) => !e.silent && e.date <= end).reverse().slice(0, 150);
+    ui.clear(line, shownEvents.length ? shownEvents.map((e) => h("li", { class: ["eco-tone-" + e.tone, e.date >= weeks[pos] && "is-now", e.future && e.date > today && "is-future"] },
+      h("span", { class: "hr-tl-dot" }, ui.icon(e.icon, 13)), h("div", { class: "hr-tl-body" }, h("div", { class: "hr-tl-date", text: fmtDate(e.date) }), h("b", { text: e.title }), e.detail ? h("small", { class: "eco-muted", text: e.detail }) : null)))
+      : h("li", {}, ui.empty({ icon: "history", title: t("jr.empty") })));
+  }
+  load();
+  return { el: sc.el, onActivate: (p) => { if (p && p.employee && E && p.employee !== E.id) { pickEmp.value = p.employee; load(); } }, onClose: stop };
+}
+
 function fillOptions(sel, rows, keep) {
   const first = sel.options[0];
   sel.replaceChildren(first, ...rows.map((r) => h("option", { value: r.id, text: r.code + " · " + (r.name || r.title || "") })));
@@ -629,7 +819,7 @@ function rosterScreen({ shell }) {
       }
       const q = (v.text || "").toLowerCase();
       const list = [...rows.values()].filter((r) => r.emp.employment_status !== "Terminated" && (!q || (r.code + " " + r.name).toLowerCase().includes(q)) && (!v.unit || (R.unitOf(r.emp) || {}).id === v.unit || (R.unitOf(r.emp) || {}).parent_id === v.unit));
-      g = ui.grid(cols(), { rows: list, rowKey: "id", selection: "single", totals: true, layoutKey: null, rowHeight: 36, emptyText: t("plan.empty") });
+      g = ui.grid(cols(), { rows: list, rowKey: "id", selection: "single", totals: true, layoutKey: null, rowHeight: 36, autofit: false, emptyText: t("plan.empty") });
       g.el.classList.add("hr-roster");
       ui.clear(host, g.el);
       sc.result && sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
@@ -754,10 +944,104 @@ function matrixScreen({ shell }) {
         { key: "job", label: t("field.job_id"), width: 150, value: (e) => R.name(R.jobOf(e)) },
         ...skillCols.map((k) => ({ key: "s_" + k.code, label: k.code, title: k.name, width: 96, align: "center", render: (e) => cell(e, k), value: (e) => { const x = held.get(e.id + "|" + k.id); return x ? x.level : ""; },
           total: (vis) => t("qual.holders_n", { n: vis.filter((e) => { const x = held.get(e.id + "|" + k.id); return x && qState(x, today) !== "expired"; }).length }) }))],
-      { rows, rowKey: "id", selection: "single", totals: true, rowHeight: 32, emptyText: skillCols.length ? t("empty") : t("qual.no_skills") });
+      { rows, rowKey: "id", selection: "single", totals: true, rowHeight: 32, autofit: false, emptyText: skillCols.length ? t("empty") : t("qual.no_skills") });
       g.el.classList.add("hr-roster");
       ui.clear(host, g.el);
     } catch (e) { ui.clear(host, ui.empty({ icon: "x-octagon", title: e.message })); }
+  }
+  load();
+  return { el: sc.el };
+}
+
+// ------------------------------------------------------------------ Discipline (phase 6): the penalty schedule, violations, decisions
+const penaltyText = (p) => {
+  if (!p) return "";
+  if (p.startsWith("deduct:")) { const d = Number(p.slice(7)); return t("penalty.deduct", { days: d % 1 ? d.toFixed(2).replace(/0$/, "") : d }); }
+  return has("penalty." + p) ? t("penalty." + p) : p;
+};
+const VSTATE = { proposed: "idle", approved: "bad", waived: "neutral" };
+const rulesScreen = registerScreen("penalty_rule", "DSC1010", "nav.penalty_rules", () => [
+  { key: "code", label: t("field.code"), type: "code", width: 100, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 },
+  { key: "violation", label: t("field.violation"), width: 150, value: (r) => t("violation." + r.violation) },
+  { key: "threshold_minutes", label: t("field.threshold_minutes"), type: "number", width: 110 }, { key: "window_days", label: t("field.window_days"), type: "number", width: 110 },
+  { key: "steps", label: t("field.steps"), width: 380, value: (r) => (r.steps || "").split(",").map((s, i) => (i + 1) + ". " + penaltyText(s.trim())).join("   ") },
+  { key: "active", label: t("field.active"), width: 90, value: (r) => (r.active ? t("yes") : t("no")) },
+], { write: "hr.discipline.write", group: "g.discipline", rows: (R) => R.rules, people: false, icon: "scale",
+  extra: (r) => ui.section(t("field.steps"), h("ol", { class: "hr-steps" }, (r.steps || "").split(",").map((s) => h("li", { text: penaltyText(s.trim()) })))) });
+
+function violationsScreen({ shell }) {
+  let R = null;
+  const today = localToday();
+  const conds = ui.conditionPanel([
+    { key: "days", label: t("cmp.period"), type: "daterange", default: [addDays(today, -60), today], span: 2 },
+    { key: "status", label: t("field.status"), type: "select", options: Object.keys(VSTATE).map((k) => [k, t("vstatus." + k)]), placeholder: t("all") },
+    { key: "text", label: t("find.person"), placeholder: t("find.person_ph") }], { key: "DSC2010", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "status", label: t("field.status"), type: "status", width: 120, frozen: true, status: (r) => VSTATE[r.status], label_of: (s, r) => t("vstatus." + r.status) },
+    { key: "employee", label: t("field.employee_id"), width: 200, value: (r) => R.label(R.byId.get(r.employee_id)) },
+    { key: "work_date", label: t("plan.day"), type: "date", width: 104 },
+    { key: "rule", label: t("field.rule_id"), width: 170, value: (r) => R.name(R.byId.get(r.rule_id)) },
+    { key: "minutes", label: t("field.minutes"), type: "number", width: 90 },
+    { key: "occurrence", label: t("field.occurrence"), type: "number", width: 90 },
+    { key: "proposed", label: t("field.proposed"), width: 170, value: (r) => penaltyText(r.proposed) },
+    { key: "decision", label: t("field.decision"), width: 170, value: (r) => penaltyText(r.decision) },
+    { key: "days", label: t("field.deducted_days"), type: "number", digits: 2, width: 110, total: "sum", value: (r) => (r.status === "approved" && (r.decision || "").startsWith("deduct:") ? Number(r.decision.slice(7)) : 0) },
+    { key: "decided_by", label: t("field.decided_by"), type: "code", width: 120 }, { key: "decided_on", label: t("field.decided_on"), type: "date", width: 110 },
+    { key: "source", label: t("field.source"), width: 110, value: (r) => t("vsource." + (r.source || "manual")) },
+    { key: "note", label: t("field.note"), width: 260 },
+  ], { rowKey: "id", selection: "single", totals: true, layoutKey: "DSC2010", emptyText: t("disc.empty"), rowStatus: (r) => (r.status === "approved" ? "down" : null),
+    presets: [{ id: "waiting", label: t("vstatus.proposed"), test: (r) => r.status === "proposed" }, { id: "deduct", label: t("disc.deductions"), test: (r) => r.status === "approved" && (r.decision || "").startsWith("deduct:") },
+      { id: "late", label: t("violation.late"), test: (r) => (R.byId.get(r.rule_id) || {}).violation === "late" }, { id: "absence", label: t("violation.absence"), test: (r) => (R.byId.get(r.rule_id) || {}).violation === "absence" }],
+    onSelect: (sel) => { const v = sel[0]; act.decide.disabled = !v || v.status !== "proposed" || !can("hr.discipline.approve"); },
+    onOpen: (r) => r.status === "proposed" && can("hr.discipline.approve") && decide(r) });
+  const act = {
+    propose: ui.button({ label: t("disc.propose"), icon: "sparkles", kind: "primary", disabled: !can("hr.discipline.write"), onClick: () => propose() }),
+    add: ui.button({ label: t("new.violation"), icon: "plus", disabled: !can("hr.discipline.write"), onClick: () => editRecord("violation", null, { work_date: today }).then((ok) => ok && load()) }),
+    decide: ui.button({ label: t("disc.decide"), icon: "scale", disabled: true, onClick: () => decide(g.selected()[0]) }),
+  };
+  const sc = screen({ code: "DSC2010", title: t("nav.violations"), path: [t("g.discipline")], shell, toolbar: [act.propose, act.add, act.decide],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("violations"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+    conditions: conds, grid: g, note: h("div", { class: "hr-pad" }, ui.banner("info", t("disc.rule_note"))) });
+  function propose() {
+    const a = ui.input({ type: "date", value: addDays(today, -30) }), b = ui.input({ type: "date", value: addDays(today, -1) }), out = h("div");
+    ui.dialog({ title: t("disc.propose"), icon: "sparkles", width: 520, body: h("div", { class: "hr-stack" }, h("p", { class: "eco-dialog-text", text: t("disc.propose_help") }),
+      h("div", { class: "eco-form" }, ui.field(t("from"), a, { required: true }), ui.field(t("to"), b, { required: true })), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("disc.propose"), kind: "primary", icon: "sparkles", onClick: async () => {
+      try { const r = await api("POST", "/api/discipline/propose", { from: a.value, to: b.value }); ui.toast({ kind: "ok", title: t("disc.proposed_n", { n: r.proposed.length }), text: t("disc.checked_n", { n: r.checked_days }), keep: true }); load(); return true; }
+      catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; }
+    } }] });
+  }
+  function decide(v) {
+    const emp = R.byId.get(v.employee_id), rule = R.byId.get(v.rule_id) || {};
+    const steps = (rule.steps || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const options = [...new Set([v.proposed, ...steps, "warning", "final_warning", "investigation"].filter(Boolean))];
+    const pick = ui.select({ options: options.map((p) => [p, penaltyText(p) + (p === v.proposed ? " · " + t("disc.schedule_says") : "")]), value: v.proposed });
+    const note = h("textarea", { class: "eco-input", rows: 3, placeholder: t("disc.note_ph") });
+    const mode = ui.segmented({ value: "approved", options: [["approved", t("disc.apply"), "scale"], ["waived", t("disc.waive"), "check"]], onChange: (x) => { mode.value_ = x; row.hidden = x !== "approved"; } });
+    mode.value_ = "approved";
+    const row = ui.field(t("field.decision"), pick);
+    const out = h("div");
+    ui.dialog({ title: t("disc.decide") + " · " + (emp ? emp.preferred_name || emp.code : ""), subtitle: v.work_date + " · " + (rule.name || "") + (v.minutes ? " · " + t("disc.minutes_n", { n: v.minutes }) : ""),
+      icon: "scale", width: 560, body: h("div", { class: "hr-stack" },
+        ui.props([[t("field.occurrence"), t("disc.nth", { n: v.occurrence || 1, days: rule.window_days || 30 })], [t("field.proposed"), penaltyText(v.proposed)]]),
+        mode, row, ui.field(t("field.note"), note, { hint: t("disc.note_hint") }), ui.banner("info", t("disc.final")), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("disc.record"), kind: "primary", icon: "save", onClick: async () => {
+        const fields = mode.value_ === "approved" ? { status: "approved", decision: pick.value, note: note.value } : { status: "waived", note: note.value };
+        try { await api("PUT", "/api/violation/" + encodeURIComponent(v.code), { fields, expected_ver: v.ver }); ui.toast({ kind: "ok", title: t("saved"), text: v.code, keep: true }); load(); return true; }
+        catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; }
+      } }] });
+  }
+  async function load() {
+    const t0 = performance.now();
+    g.setLoading();
+    try {
+      R = await refs(true);
+      const v = conds.values(), q = (v.text || "").toLowerCase();
+      const rows = await api("GET", "/api/violation");
+      g.setRows(rows.filter((r) => (!v.days[0] || r.work_date >= v.days[0]) && (!v.days[1] || r.work_date <= v.days[1]) && (!v.status || r.status === v.status)
+        && (!q || R.label(R.byId.get(r.employee_id)).toLowerCase().includes(q))).sort((a, b) => b.work_date.localeCompare(a.work_date)));
+      sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
+    } catch (e) { g.setError(e.message); }
   }
   load();
   return { el: sc.el };
@@ -847,20 +1131,21 @@ function usersScreen({ shell }) {
 }
 // ------------------------------------------------------------------ rights: segregation of duties and role templates (ideas from Mizan)
 // Two rights one person should not hold together (the administrator profile is exempt: it holds every right by rule).
-const SOD = [["admin.users.manage", "hr.employees.write"], ["hr.employees.delete", "admin.backup.restore"]];
+const SOD = [["admin.users.manage", "hr.employees.write"], ["hr.employees.delete", "admin.backup.restore"], ["hr.discipline.write", "hr.discipline.approve"]];
 const sodConflicts = (perms) => SOD.filter(([a, b]) => perms.includes(a) && perms.includes(b));
 const READS = ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read"];
 // starting points for a new profile or for resetting one; the person still ticks and saves (no hidden rights)
 const TEMPLATES = {
   viewer: READS,
-  hr_clerk: [...READS, "hr.employees.write", "hr.attendance.upload", "hr.import.run"],
+  hr_clerk: [...READS, "hr.employees.write", "hr.attendance.upload", "hr.import.run", "hr.discipline.read", "hr.discipline.write"],
   planner: [...READS, "hr.shifts.write"],
   skills_coordinator: [...READS, "hr.skills.write"],
-  auditor: [...READS, "admin.audit.read", "admin.system.read"],
+  auditor: [...READS, "admin.audit.read", "admin.system.read", "hr.discipline.read"],
+  line_manager: [...READS, "hr.discipline.read", "hr.discipline.approve"],
   it_admin: ["hr.org.read", "admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage", "admin.backup.manage"],
 };
 // the matrix: one row per object, one cell per action (Mizan's role editor)
-const PERM_ACTIONS = ["read", "write", "delete", "upload", "restore", "run", "manage"];
+const PERM_ACTIONS = ["read", "write", "approve", "delete", "upload", "restore", "run", "manage"];
 const permSplit = (p) => { const i = p.lastIndexOf("."); return { object: p.slice(0, i), action: p.slice(i + 1) }; };
 
 // ------------------------------------------------------------------ the Advisor: daily checks with the reason and what to do (Mizan's advisor, for people)
@@ -868,8 +1153,8 @@ const permSplit = (p) => { const i = p.lastIndexOf("."); return { object: p.slic
 async function advisorFindings() {
   const R = await refs(true), today = localToday(), out = [];
   const opt = (perm, path) => (can(perm) ? api("GET", path).catch(() => null) : Promise.resolve(null));
-  const [asg, quals, hh, users, profs, st] = await Promise.all([opt("hr.shifts.read", "/api/shift_assignment"), opt("hr.skills.read", "/api/employee_skill"), opt("admin.system.read", "/api/admin/health"),
-    opt("admin.users.manage", "/api/admin/users"), opt("admin.users.manage", "/api/admin/profiles"), opt("admin.settings.manage", "/api/admin/settings")]);
+  const [asg, quals, hh, users, profs, st, viol] = await Promise.all([opt("hr.shifts.read", "/api/shift_assignment"), opt("hr.skills.read", "/api/employee_skill"), opt("admin.system.read", "/api/admin/health"),
+    opt("admin.users.manage", "/api/admin/users"), opt("admin.users.manage", "/api/admin/profiles"), opt("admin.settings.manage", "/api/admin/settings"), opt("hr.discipline.read", "/api/violation")]);
   const who = (e) => (e ? e.code + " · " + (e.preferred_name || "") : "");
   const person = (e, sub) => ({ label: who(e), sub, screen: "EMP1010" });
   const add = (id, severity, area, items, vars = {}, screen) => { if (items === true || (items && items.length)) out.push({ id, severity, area, items: items === true ? [] : items, vars: { n: items === true ? 0 : items.length, ...vars }, screen }); };
@@ -901,6 +1186,14 @@ async function advisorFindings() {
     add("qual_expired", "error", "skills", quals.filter((q) => active(q) && qState(q, today) === "expired").map(qItem), {}, "SKL2010");
     add("qual_expiring", "warning", "skills", quals.filter((q) => active(q) && qState(q, today) === "expiring").map(qItem), { days: 30 }, "SKL2010");
   }
+  // discipline: a decision is due within 30 days of finding the violation
+  if (viol) {
+    const waiting = viol.filter((v) => v.status === "proposed");
+    const age = (v) => Math.floor((new Date(today) - new Date((v.created_at || today).slice(0, 10))) / 864e5);
+    const vItem = (v) => ({ label: who(R.byId.get(v.employee_id)), sub: v.work_date + " · " + ((R.byId.get(v.rule_id) || {}).name || ""), screen: "DSC2010" });
+    add("decision_due", "warning", "discipline", waiting.filter((v) => age(v) >= 20).map(vItem), { days: 30 }, "DSC2010");
+    add("decision_waiting", "tip", "discipline", waiting.filter((v) => age(v) < 20).map(vItem), {}, "DSC2010");
+  }
   // security
   if (users && profs) {
     const byProf = new Map(profs.map((p) => [p.code, p]));
@@ -924,7 +1217,7 @@ async function advisorFindings() {
   const rank = { error: 0, warning: 1, tip: 2 };
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }
-const ADV_AREAS = ["people", "organisation", "planning", "skills", "security", "system"];
+const ADV_AREAS = ["people", "organisation", "planning", "skills", "discipline", "security", "system"];
 function adviceCard(f, shell) {
   const words = (part) => (has("adv." + f.id + "." + part) ? t("adv." + f.id + "." + part, f.vars) : null);
   return ui.advice({ severity: f.severity, title: words("title"), tags: [t("adv.area." + f.area)], body: words("body"), fix: words("fix"), basis: words("basis"),
@@ -958,7 +1251,7 @@ function advisorScreen({ shell }) {
 
 const PERM_GROUPS = [["perm_group.people",["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
   ["perm_group.organisation", ["hr.org.read", "hr.org.write"]], ["perm_group.attendance", ["hr.attendance.read", "hr.attendance.upload"]],
-  ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]],
+  ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]], ["perm_group.discipline", ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"]],
     ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
 function profilesScreen({ shell }) {
   let profiles = [], users = [], current = null, work = null;
@@ -1239,27 +1532,27 @@ function dashboardScreen({ shell }) {
             ui.button({ label: t("dash.search"), icon: "search", onClick: () => shell.palette(), kbd: "Ctrl K" }))),
         c.provisional ? ui.banner("warn", t("company.provisional_help"), { title: t("company.provisional") }) : null,
         h("div", { class: "hr-kpis" },
-          ui.kpi({ label: t("dash.employees"), value: ui.fmtNumber(emp.filter((e) => e.employment_status !== "Terminated").length), icon: "users", hint: t("dash.active_n", { n: active }) }),
-          ui.kpi({ label: t("dash.on_leave"), value: ui.fmtNumber(leave), icon: "calendar", status: "idle", hint: t("dash.today") }),
-          ui.kpi({ label: t("dash.positions"), value: filled + " / " + R.positions.length, icon: "id-card", status: "setup", hint: R.positions.length ? t("dash.filled_pct", { n: Math.round((filled / R.positions.length) * 100) }) : t("dash.filled") }),
+          ui.kpi({ label: t("dash.employees"), value: ui.fmtNumber(emp.filter((e) => e.employment_status !== "Terminated").length), icon: "users", tone: 2, hint: t("dash.active_n", { n: active }) }),
+          ui.kpi({ label: t("dash.on_leave"), value: ui.fmtNumber(leave), icon: "calendar", tone: 4, hint: t("dash.today") }),
+          ui.kpi({ label: t("dash.positions"), value: filled + " / " + R.positions.length, icon: "id-card", tone: 1, hint: R.positions.length ? t("dash.filled_pct", { n: Math.round((filled / R.positions.length) * 100) }) : t("dash.filled") }),
           ui.kpi({ label: t("dash.attention"), value: String(serious.length), icon: "clipboard-check", status: found.some((f) => f.severity === "error") ? "bad" : serious.length ? "warn" : "ok", hint: t("dash.attention_hint", { n: tips }) })),
         h("div", { class: "hr-dash-grid" },
-          card({ title: t("dash.by_department"), subtitle: t("dash.by_department_sub"), icon: "chart", body: byDept.length ? ui.barChart({ labels: byDept.map(([d]) => d.code), series: [{ label: t("dash.employees"), values: byDept.map(([, n]) => n) }], height: 230, width: 760 })
+          card({ title: t("dash.by_department"), subtitle: t("dash.by_department_sub"), icon: "chart", tone: 2, body: byDept.length ? ui.barChart({ labels: byDept.map(([d]) => (d.name || d.code).length > 16 ? (d.name || d.code).slice(0, 15) + "…" : d.name || d.code), series: [{ label: t("dash.employees"), values: byDept.map(([, n]) => n) }], height: 230, width: 760 })
             : ui.empty({ icon: "chart", title: t("dash.no_data"), text: t("dash.no_data_help") }), actions: shell.screens.ORG1010 ? [ui.button({ label: t("nav.structure"), kind: "ghost", size: "sm", icon: "sitemap", onClick: () => shell.open("ORG1010") })] : null }),
-          card({ title: t("dash.quick"), icon: "zap", actions: [ui.kbd("Ctrl"), ui.kbd("K")], cls: "hr-quick-card", body: h("div", { class: "hr-quick-list" }, quick.map(([code, ic, key]) =>
+          card({ title: t("dash.quick"), icon: "zap", tone: 4, actions: [ui.kbd("Ctrl"), ui.kbd("K")], cls: "hr-quick-card", body: h("div", { class: "hr-quick-list" }, quick.map(([code, ic, key]) =>
             h("button", { type: "button", class: "hr-quick-item", onclick: () => shell.open(code) }, h("span", { class: "hr-quick-ic" }, ui.icon(ic, 16)), h("span", { text: t(key) }), ui.icon(ui.isRTL() ? "chev-left" : "chev-right", 14, "eco-muted")))) })),
         h("div", { class: "hr-dash-2" },
-          card({ title: t("dash.status"), icon: "activity", body: emp.length ? ui.donut({ parts: statuses.map(([s, n]) => ({ label: value(s), value: n, status: { Active: "ok", Leave: "idle", Suspended: "hold", Terminated: "neutral" }[s] })), centerLabel: t("dash.employees") })
+          card({ title: t("dash.status"), icon: "activity", tone: 5, body: emp.length ? ui.donut({ parts: statuses.map(([s, n]) => ({ label: value(s), value: n, status: { Active: "ok", Leave: "idle", Suspended: "hold", Terminated: "neutral" }[s] })), centerLabel: t("dash.employees") })
             : ui.empty({ icon: "users", title: t("emp.empty") }) }),
           card({ title: t("nav.advisor"), icon: "clipboard-check", cls: "hr-flush", actions: shell.screens.ADV1010 ? [ui.button({ label: t("dash.open_all"), size: "sm", onClick: () => shell.open("ADV1010") })] : null,
             body: serious.length ? h("ul", { class: "hr-adv-list" }, serious.slice(0, 5).map((f) => h("li", {}, ui.icon(f.severity === "error" ? "x-octagon" : "alert", 16, f.severity === "error" ? "hr-bad" : "hr-warn"),
-              h("button", { type: "button", class: "eco-linkbtn", text: t("adv." + f.id + ".title", f.vars), onclick: () => shell.open("ADV1010") }), h("span", { class: "eco-count", text: String(f.items.length || "") })))))
+              h("button", { type: "button", class: "eco-linkbtn", text: t("adv." + f.id + ".title", f.vars), onclick: () => shell.open("ADV1010") }), h("span", { class: "eco-count", text: String(f.items.length || "") }))))
               : h("div", { class: "hr-row hr-pad2" }, ui.icon("check-circle", 18, "hr-ok"), h("span", { text: tips ? t("dash.only_tips", { n: tips }) : ui.kitText("all_clear") })) })),
         h("div", { class: "hr-dash-2" },
-          card({ title: t("dash.new_hires"), icon: "user-check", cls: "hr-flush", body: hires.length ? h("ul", { class: "hr-list" }, hires.map((e) => h("li", {}, ui.avatar(e.preferred_name || e.code, 30),
+          card({ title: t("dash.new_hires"), icon: "user-check", tone: 3, cls: "hr-flush", body: hires.length ? h("ul", { class: "hr-list" }, hires.map((e) => h("li", {}, ui.avatar(e.preferred_name || e.code, 30),
             h("div", {}, h("b", { text: e.preferred_name || e.code }), h("small", { class: "eco-muted", text: [R.name(R.jobOf(e)), R.name(R.unitOf(e))].filter(Boolean).join(" · ") || e.code })), h("span", { class: "eco-grow" }), ui.ltr(e.hire_date, "eco-muted"))))
             : h("div", { class: "hr-pad2 eco-muted", text: t("none") }) }),
-          audit.length ? card({ title: t("dash.activity"), icon: "history", cls: "hr-flush", body: h("ul", { class: "hr-activity" }, audit.map((a) => h("li", {}, h("span", { class: "hr-dot" }), h("div", {}, h("b", {}, ui.ltr(a.event)),
+          audit.length ? card({ title: t("dash.activity"), icon: "history", cls: "hr-flush", body: h("ul", { class: "hr-activity" }, audit.map((a) => h("li", {}, h("span", { class: "hr-dot" }), h("div", {}, h("b", { text: eventText(a) }),
             h("small", { class: "eco-muted" }, ui.ltr(a.actor), " · ", ui.ltr((a.at || "").slice(0, 16).replace("T", " ")))))) ), actions: [ui.button({ label: t("nav.audit"), kind: "ghost", size: "sm", onClick: () => shell.open("SEC9030") })] })
             : hh ? card({ title: t("dash.system"), icon: "shield", body: systemChecks(hh), actions: [ui.button({ label: t("nav.health"), kind: "ghost", size: "sm", onClick: () => shell.open("SYS9100") })] }) : null),
         audit.length && hh ? card({ title: t("dash.system"), icon: "shield", body: systemChecks(hh), actions: [ui.button({ label: t("nav.health"), kind: "ghost", size: "sm", onClick: () => shell.open("SYS9100") })] }) : null,
@@ -1270,9 +1563,102 @@ function dashboardScreen({ shell }) {
   load();
   return { el: body, onActivate: () => { if (S.refs === null) load(); } };
 }
+/** An audit line in plain words ("Employee E000123 saved") instead of its code ("record.saved"). */
+function eventText(a) {
+  const d = a.detail || {}, base = has("event." + a.event) ? t("event." + a.event) : a.event;
+  if (d.entity && d.code) return base + ": " + (has("entity." + d.entity) ? t("entity." + d.entity) : d.entity) + " " + d.code;
+  if (d.user) return base + ": " + d.user;
+  if (d.profile) return base + ": " + profileName(d.profile);
+  return base;
+}
 function systemChecks(hh) {
   return h("div", { class: "hr-checks" }, [[hh.journal.ok, t("health.journal")], [hh.audit.ok, t("health.audit")], [!!(hh.last_backup && hh.last_backup.rehearsal && hh.last_backup.rehearsal.ok), t("health.last_backup")],
     [hh.recovery ? hh.recovery.intact : null, t("health.recovery")]].map(([ok, k]) => h("div", { class: "hr-check" }, ui.icon(ok === null ? "info" : ok ? "check-circle" : "x-octagon", 16, ok === null ? "eco-muted" : ok ? "hr-ok" : "hr-bad"), h("span", { text: k }))));
+}
+
+// ------------------------------------------------------------------ the guide system (Mizan's design: guide mode, help panel, "how do I", guided tours)
+// Guide mode, per person: off (help only when asked), basic (+ the Advisor's warnings on the record itself),
+// full (+ tips inside the forms and what each figure is made of). F1 or "?" opens the help panel beside the work.
+const guideMode = () => ui.prefs.get("guide", "full");
+const guideAtLeast = (m) => ({ off: 0, basic: 1, full: 2 })[guideMode()] >= ({ off: 0, basic: 1, full: 2 })[m];
+const view = () => document.querySelector(".eco-view:not([hidden])");
+const inView = (sel) => () => { const v = view(); return v ? v.querySelector(sel) : null; };
+// "How do I ...": each task is a guided tour that opens the screens it needs; its words are task.<id>.<n>.t / .x
+const TASKS = [
+  { id: "hire", icon: "user-plus", screens: ["EMP1010"], steps: [["EMP1010", ".eco-toolbar-start .eco-btn-primary"], ["EMP1010", ".eco-cond"], ["EMP1010", ".eco-resultbar .eco-seg"], ["EMP1010", ".eco-gh-filter"], ["EMP1010", ".hr-detail .eco-tabs-inner"]] },
+  { id: "journey", icon: "trending-up", screens: ["EMP2010"], steps: [["EMP2010", ".hr-journey-head"], ["EMP2010", ".hr-play"], ["EMP2010", ".hr-journey-figures"], ["EMP2010", ".hr-timeline-box"]] },
+  { id: "plan", icon: "calendar-check", screens: ["SHF2010", "SHF3010"], steps: [["SHF2010", ".eco-toolbar-start .eco-btn-primary"], ["SHF3010", ".eco-toolbar-start .eco-btn"], ["SHF3010", ".hr-day"], ["SHF3010", ".hr-legend"]] },
+  { id: "penalty", icon: "scale", screens: ["DSC1010", "DSC2010"], steps: [["DSC1010", ".eco-screen-grid"], ["DSC2010", ".eco-toolbar-start .eco-btn-primary"], ["DSC2010", ".eco-resultbar .eco-seg"], ["DSC2010", ".eco-toolbar-start .eco-btn:nth-child(3)"], ["ADV1010", ".eco-advice"]] },
+  { id: "certify", icon: "shield", screens: ["SKL3010", "SKL2010"], steps: [["SKL3010", ".hr-legend"], ["SKL3010", ".hr-q"], ["SKL2010", ".eco-resultbar .eco-seg"]] },
+  { id: "rights", icon: "key", screens: ["SEC9020", "SEC9010"], steps: [["SEC9020", ".hr-plist"], ["SEC9020", ".hr-pm-cell"], ["SEC9020", ".hr-record-head .eco-btn"], ["SEC9010", ".eco-toolbar-start .eco-btn-primary"]] },
+  { id: "backup", icon: "archive", screens: ["SYS9070", "SYS9100"], steps: [["SYS9070", ".eco-toolbar-start .eco-btn-primary"], ["SYS9070", ".eco-screen-grid"], ["SYS9100", ".hr-tiles"]] },
+  { id: "advisor", icon: "clipboard-check", screens: ["ADV1010"], steps: [["ADV1010", ".hr-kpis"], ["ADV1010", ".eco-seg"], ["ADV1010", ".eco-advice-fix"], ["ADV1010", ".eco-advice-items"]] },
+];
+function runTask(id) {
+  const task = TASKS.find((x) => x.id === id);
+  if (!task || !S.shell) return;
+  const drawer = ui.openDrawer();
+  drawer && drawer.close();
+  const steps = task.steps.filter(([code]) => S.shell.screens[code]).map(([code, sel], i) => ({
+    title: t(`task.${id}.${i + 1}.t`), text: t(`task.${id}.${i + 1}.x`), target: inView(sel),
+    before: async () => { if (S.shell.active() !== code) { S.shell.open(code); await new Promise((r) => setTimeout(r, 900)); } },
+  }));
+  if (!steps.length) { ui.toast({ kind: "warn", text: t("guide.no_rights") }); return; }
+  ui.tour(steps, { onEnd: (done) => done && ui.toast({ kind: "ok", title: t("guide.done"), text: t(`task.${id}.title`) }) });
+}
+function taskList(filter = "") {
+  const q = filter.trim().toLowerCase();
+  const list = TASKS.filter((x) => x.screens.some((c) => S.shell && S.shell.screens[c]) && (!q || (t(`task.${x.id}.title`) + " " + t(`task.${x.id}.keywords`)).toLowerCase().includes(q)));
+  return h("div", { class: "hr-tasks" }, list.length ? list.map((x) => h("button", { type: "button", class: "hr-task", onclick: () => runTask(x.id) },
+    h("span", { class: "hr-quick-ic" }, ui.icon(x.icon, 16)), h("span", {}, h("b", { text: t(`task.${x.id}.title`) }), h("small", { class: "eco-muted", text: t("guide.steps_n", { n: x.steps.length }) })),
+    ui.icon("play", 14, "eco-muted"))) : h("p", { class: "eco-muted", text: t("guide.no_task") }));
+}
+function openHelp() {
+  const code = S.shell && S.shell.active();
+  const sc = code && S.shell.screens[code];
+  const find = ui.input({ type: "search", placeholder: t("guide.search_ph") });
+  const tasksBox = h("div", {}, taskList());
+  find.addEventListener("input", () => ui.clear(tasksBox, taskList(find.value)));
+  const about = code && has("about." + code) ? t("about." + code) : t("about.HOME");
+  const mode = ui.segmented({ size: "sm", value: guideMode(), options: [["off", t("guide.off")], ["basic", t("guide.basic")], ["full", t("guide.full")]],
+    onChange: (v) => { ui.prefs.set("guide", v); window.dispatchEvent(new Event("eco-refresh")); ui.toast({ kind: "ok", text: { off: t("guide.mode_off"), basic: t("guide.mode_basic"), full: t("guide.mode_full") }[v] }); } });
+  ui.drawer({ title: sc ? sc.title : t("guide.title"), subtitle: code && code !== "HOME" ? code + (has("sub." + code) ? " · " + t("sub." + code) : "") : t("guide.subtitle"), icon: "help", width: 460,
+    body: h("div", { class: "hr-help" },
+      h("section", {}, h("h3", { text: t("guide.about_screen") }), about.split(/\n{2,}/).map((p) => h("p", { text: p }))),
+      h("section", {}, h("h3", { text: t("guide.how_do_i") }), find, tasksBox),
+      h("section", {}, h("h3", { text: t("guide.mode") }), mode, h("p", { class: "eco-muted hr-small", text: t("guide.mode_help") })),
+      h("section", { class: "hr-help-keys" }, h("h3", { text: t("guide.keys") }), ui.props([["F1", t("guide.key_f1")], ["Ctrl K", t("guide.key_k")], ["F5", t("guide.key_f5")], ["Ctrl E", t("guide.key_e")]])),
+      S.shell.screens.HLP1010 ? ui.button({ label: t("guide.open_center"), icon: "bookmark", onClick: () => { ui.openDrawer() && ui.openDrawer().close(); S.shell.open("HLP1010"); } }) : null) });
+}
+function helpCenterScreen({ shell }) {
+  const find = ui.searchBox({ placeholder: t("guide.search_center"), width: "420px" });
+  const body = h("div", { class: "hr-page hr-help-center" });
+  const draw = () => {
+    const q = find.querySelector("input").value.trim().toLowerCase();
+    const match = (code) => !q || (t(SCREENS[code][0]) + " " + (has("about." + code) ? t("about." + code) : "") + " " + (has(SCREENS[code][0] + ".help") ? t(SCREENS[code][0] + ".help") : "")).toLowerCase().includes(q);
+    ui.clear(body,
+      ui.card({ title: t("guide.how_do_i"), subtitle: t("guide.tasks_sub"), icon: "play", tone: 1, body: taskList(q) }),
+      h("div", { class: "hr-help-grid" }, MENU.map(([id, ic, codes]) => {
+        const mine = codes.filter((c) => shell.screens[c] && match(c));
+        return mine.length ? ui.card({ title: t("g." + id), icon: ic, tone: 2, body: h("div", { class: "hr-help-topics" }, mine.map((c) => h("details", { class: "hr-topic" },
+          h("summary", {}, ui.icon(SCREENS[c][1], 15), h("b", { text: t(SCREENS[c][0]) }), h("small", { class: "eco-muted", text: c })),
+          has("sub." + c) ? h("p", { class: "hr-topic-sub", text: t("sub." + c) }) : null,
+          ...(has("about." + c) ? t("about." + c).split(/\n{2,}/).map((p) => h("p", { text: p })) : []),
+          ui.button({ label: t("guide.open_screen"), icon: "arrow-up", size: "sm", onClick: () => shell.open(c) })))) }) : null;
+      })));
+  };
+  find.querySelector("input").addEventListener("input", draw);
+  const sc = screen({ code: "HLP1010", title: t("nav.help"), path: [t("g.system")], shell, headExtra: find, body });
+  draw();
+  return { el: sc.el };
+}
+/** The Advisor's findings about one record (basic guide mode and up): shown on the record itself, like Mizan's advice on a document. */
+async function recordWarnings(code) {
+  if (!guideAtLeast("basic")) return null;
+  S.findings = S.findings || (await advisorFindings().catch(() => []));
+  const mine = S.findings.filter((f) => f.severity !== "tip" && f.items.some((it) => (it.label || "").startsWith(code + " ")));
+  return mine.length ? h("div", { class: "hr-record-warnings" }, mine.map((f) => ui.banner(f.severity === "error" ? "bad" : "warn", has("adv." + f.id + ".fix") ? t("adv." + f.id + ".fix", f.vars) : "",
+    { title: t("adv." + f.id + ".title", f.vars) }))) : null;
 }
 
 // ------------------------------------------------------------------ the shell
@@ -1280,6 +1666,7 @@ const SCREENS = {
   HOME: ["nav.home", "dashboard", null, dashboardScreen],
   ADV1010: ["nav.advisor", "clipboard-check", null, advisorScreen],
   EMP1010: ["nav.employees", "users", "hr.employees.read", employeesScreen],
+  EMP2010: ["nav.journey", "trending-up", "hr.employees.read", journeyScreen],
   ATT2010: ["nav.attendance", "calendar-check", "hr.attendance.read", attendanceScreen],
   ORG1010: ["nav.structure", "sitemap", "hr.org.read", structureScreen],
   ORG1020: ["nav.jobs", "briefcase", "hr.org.read", jobsScreen],
@@ -1292,14 +1679,17 @@ const SCREENS = {
   SKL3010: ["nav.matrix", "table", "hr.skills.read", matrixScreen],
   SKL2010: ["nav.qualifications", "shield", "hr.skills.read", qualificationsScreen],
   SKL1010: ["nav.skills", "tag", "hr.skills.read", skillsScreen],
+  DSC2010: ["nav.violations", "flag", "hr.discipline.read", violationsScreen],
+  DSC1010: ["nav.penalty_rules", "scale", "hr.discipline.read", rulesScreen],
   SEC9010: ["nav.users", "user", "admin.users.manage", usersScreen],
   SEC9020: ["nav.profiles", "shield", "admin.users.manage", profilesScreen],
   SEC9030: ["nav.audit", "history", "admin.audit.read", auditScreen],
   SYS9070: ["nav.backups", "archive", "admin.backup.manage", backupsScreen],
   SYS9100: ["nav.health", "activity", "admin.system.read", healthScreen],
   SYS9060: ["nav.settings", "settings", "admin.settings.manage", settingsScreen],
+  HLP1010: ["nav.help", "bookmark", null, helpCenterScreen],
 };
-const MENU = [["people", "users", ["EMP1010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060"]]];
+const MENU = [["people", "users", ["EMP1010", "EMP2010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["discipline", "scale", ["DSC2010", "DSC1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060", "HLP1010"]]];
 function showShell() {
   const screens = {};
   for (const [code, [key, icon, perm, create]] of Object.entries(SCREENS)) {
@@ -1314,6 +1704,7 @@ function showShell() {
     product: { name: t("product.name"), short: "HR", edition: t("edition") }, company: c.name ? { name: c.name, code: c.code, note: c.provisional ? t("company.provisional") : t("company.source." + c.source) } : null,
     user: { name: S.me.display_name, role: profileName(S.me.profile), detail: S.me.user }, menu, screens, home: "HOME", maxTabs: 10, hideCodesInMenu: true, searchExample: "EMP1010",
     onTheme: setTheme, onLanguage: setLanguage,
+    topActions: [ui.button({ label: t("guide.button"), icon: "help", kind: "top", title: t("guide.title") + " (F1)", onClick: () => openHelp(), cls: "hr-guide-btn" })],
     // actions in the screen search (Ctrl+K), as in Mizan's command palette: only what this person may do
     commands: [
       can("hr.employees.write") ? { title: t("new.employee"), icon: "user-plus", keywords: "new add hire employee", run: () => editRecord("employee", null).then((ok) => ok && shell.open("EMP1010")) } : null,
@@ -1328,6 +1719,11 @@ function showShell() {
       { label: t("nav.signout"), icon: "logout", onSelect: async () => { try { await api("POST", "/api/logout"); } catch (_) { /* signed out anyway */ } S.me = null; ui.prefs.set("tabs", []); showLogin(); } }],
   });
   S.shell = shell;
+  document.addEventListener("keydown", (ev) => { if (ev.key === "F1") { ev.preventDefault(); openHelp(); } });
+  if (!ui.prefs.get("guide:welcomed", false) && guideAtLeast("basic")) {  // the first visit offers the tour of the product
+    ui.prefs.set("guide:welcomed", true);
+    setTimeout(() => ui.toast({ kind: "info", title: t("guide.welcome"), text: t("guide.welcome_text"), timeout: 12000 }), 1500);
+  }
   document.body.replaceChildren(shell.el);
   const conn = ui.statusItem("wifi", ui.kitText("connected"), "is-ok"), clock = ui.statusItem("clock", ui.fmtTime());
   shell.setStatus([conn, ui.statusItem("building", (c.name || "") + (c.code ? " · " + c.code : "")), c.provisional ? ui.statusItem("alert", t("company.provisional"), "is-warn") : null,
