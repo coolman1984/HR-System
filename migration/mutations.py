@@ -135,7 +135,7 @@ MUTATIONS = [
      "            if excel_installed() is not False:\n                return False", "            if True:\n                return False", "TEST_HR_DELIVERY.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
-     '"shifts": {"depends_on": ["kernel"], "status": "planned"', '"shifts": {"depends_on": ["kernel"], "status": "built"', "TEST_DOCS_CURRENT.py"),
+     '"overtime": {"depends_on": ["shifts", "attendance"], "status": "planned"', '"overtime": {"depends_on": ["shifts", "attendance"], "status": "built"', "TEST_DOCS_CURRENT.py"),
     ("a new kernel file appears without the documents", "hr_core/shifts.py",
      None, '"""Shift definitions (not documented yet)."""\n', "TEST_DOCS_CURRENT.py"),
     ("an HTTP route changes without the documents", "hr_core/api.py",

@@ -18,6 +18,12 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
 - **Why:** the owner asked for shifts, skills and payroll; payroll was kept as design by his choice (asked 2026-09-28),
   because calculating money on attendance not yet bound to the registry employee would give wrong pay.
 
+### A planted bug pointed at a module that had moved on
+- **Symptom:** the planted-bug run stopped: "anchor not found in hr_core/modules.py" for "a module is marked built without the documents".
+- **Cause:** that planted bug flipped `shifts` from planned to built; `shifts` is now really built, so its text changed.
+- **Fix:** the planted bug now flips `overtime`, still planned.
+- **Lesson:** a planted bug that can no longer be planted fails loudly by design; move it to something still true.
+
 ### A validator that refuses unknown keywords did its job
 - **Symptom:** the first publication of a planned day failed: `schema keyword(s) not supported by eco_contract.py: ['enum']`.
 - **Cause:** the new contract is the first with an enumerated field; HR's standard-library validator supports a fixed

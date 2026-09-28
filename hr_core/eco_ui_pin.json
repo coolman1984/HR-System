@@ -1,10 +1,10 @@
 {
  "what": "The ecosystem interface kit, copied UNCHANGED from GMES packages/eco-ui/src (ADR-029 there). Change it in GMES, then copy it here with this pin; TEST_HR_DELIVERY.py refuses any other copy.",
- "source": "https://github.com/coolman1984/GMES/tree/09b45245f5e8c3eefbeb71a7001bc3f8078c7a65/packages/eco-ui/src",
- "commit": "09b45245f5e8c3eefbeb71a7001bc3f8078c7a65",
+ "source": "https://github.com/coolman1984/GMES/tree/7f06fa816bb23e6f0aa6e69028790cf656143e43/packages/eco-ui/src",
+ "commit": "7f06fa816bb23e6f0aa6e69028790cf656143e43",
  "files": {
   "eco-ui.css": "38106f4b32f2661a37575e5360bf55928e9590091830983711acf262b2ee7fba",
-  "eco-ui.js": "2ab41e293bf02fef5ba71ee568ff030493dcd008b1bbccee139ba8783ea326ce",
+  "eco-ui.js": "4d73fcadcaf89c3dd5790096c842ef4fce798844642b6ae00fb552fd00091a09",
   "tokens.css": "4a4bd38631e23decbeb85467c7270720f3042208fcc0ae94332ce95ab031e603"
  }
 }
