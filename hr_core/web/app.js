@@ -149,13 +149,14 @@ function showPassword(forced) {
 async function refs(force) {
   if (S.refs && !force) return S.refs;
   const get = (e, perm) => (can(perm) ? api("GET", "/api/" + e).catch(() => []) : Promise.resolve([]));
-  const [units, jobs, positions, employees] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"), get("employee", "hr.employees.read")]);
-  const byId = new Map([...units, ...jobs, ...positions, ...employees].map((r) => [r.id, r]));
+  const [units, jobs, positions, employees, shifts, calendars, skillList] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"),
+    get("employee", "hr.employees.read"), get("shift", "hr.shifts.read"), get("work_calendar", "hr.shifts.read"), get("skill", "hr.skills.read")]);
+  const byId = new Map([...units, ...jobs, ...positions, ...employees, ...shifts, ...calendars, ...skillList].map((r) => [r.id, r]));
   const name = (r) => (r ? r.name || r.title || r.preferred_name || (r.job_id && byId.get(r.job_id) ? byId.get(r.job_id).title : "") || r.code : "");
   const label = (r) => (r ? r.code + " · " + name(r) : "");
   const unitOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.org_unit_id) : null; };
   const jobOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.job_id) : null; };
-  S.refs = { units, jobs, positions, employees, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
+  S.refs = { units, jobs, positions, employees, shifts, calendars, skills: skillList, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
   return S.refs;
 }
 const changed = () => { S.refs = null; };
@@ -170,33 +171,63 @@ const FORM = {
   job: [["sec.job", [["code", { req: true, ltr: true, fixed: true }], ["title", { req: true }], ["family", {}], ["level", {}], ["critical", { yesno: true }]]]],
   position: [["sec.position", [["code", { req: true, ltr: true, fixed: true }], ["job_id", { req: true, ref: (R) => R.jobs }], ["org_unit_id", { req: true, ref: (R) => R.units.filter((u) => u.type === "department" || u.type === "section") }],
     ["reports_to_id", { ref: (R, row) => R.positions.filter((p) => !row || p.id !== row.id) }], ["status", {}]]]],
+  shift: [["sec.shift", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["start_time", { req: true, time: true }], ["end_time", { req: true, time: true, hint: "hint.overnight" }],
+    ["break_minutes", { num: true }], ["grace_minutes", { num: true }]]]],
+  work_calendar: [["sec.calendar", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["rest_days", { days: true, span: 2 }], ["holidays", { ltr: true, span: 2, hint: "hint.holidays" }]]]],
+  shift_assignment: [["sec.assignment", [["employee_id", { req: true, ref: (R) => R.employees, started: true }], ["kind", { req: true, choices: ["regular", "temporary"], started: true }],
+    ["shift_id", { req: true, ref: (R) => R.shifts, started: true }], ["calendar_id", { req: true, ref: (R) => R.calendars, started: true }],
+    ["valid_from", { req: true, date: true, started: true }], ["valid_to", { date: true, hint: "hint.valid_to" }], ["note", { span: 2 }]]]],
+  skill: [["sec.skill", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["category", {}], ["validity_months", { num: true, hint: "hint.validity" }]]]],
+  employee_skill: [["sec.qualification", [["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["skill_id", { req: true, ref: (R) => R.skills, fixed: true }],
+    ["level", { req: true, choices: ["1", "2", "3", "4"], num: true, prefix: "level." }], ["certified_on", { req: true, date: true }], ["expires_on", { date: true, hint: "hint.expiry" }], ["evidence", { span: 2 }]]]],
 };
+// records whose code is made from their content (one per person and day, per person and skill ...)
+const AUTO_CODE = {
+  shift_assignment: (v, R) => { const e = R.byId.get(v.employee_id); return e && v.valid_from ? e.code + "-" + v.valid_from + "-" + (v.kind === "temporary" ? "T" : "R") : ""; },
+  employee_skill: (v, R) => { const e = R.byId.get(v.employee_id), k = R.byId.get(v.skill_id); return e && k ? e.code + "-" + k.code : ""; },
+};
+const localToday = () => ui.isoDate(new Date());
 async function editRecord(entity, row, preset = {}) {
   const R = await refs();
   const inputs = {};
+  const started = entity === "shift_assignment" && row && row.valid_from < localToday();
   const sections = FORM[entity].map(([title, fields]) => h("fieldset", { class: "hr-fieldset" }, h("legend", { text: t(title) }), h("div", { class: "eco-form" }, fields.map(([f, o]) => {
     let c;
-    if (o.choices) c = ui.select({ options: o.choices.map((v) => [v, value(v)]), placeholder: o.req ? undefined : "—" });
+    if (o.days) {
+      const chosen = new Set(String((row ? row[f] : preset[f]) || "").split(",").filter(Boolean));
+      const boxes = DAYS.map((d) => { const b = h("input", { type: "checkbox", class: "eco-check", checked: chosen.has(d), value: d, disabled: !!(row && started) }); return h("label", { class: "eco-check-label" }, b, h("span", { text: t("day." + d.toLowerCase()) })); });
+      c = h("div", { class: "hr-days" }, boxes);
+      c.getValue = () => boxes.map((l) => l.firstChild).filter((b) => b.checked).map((b) => b.value).join(",");
+      inputs[f] = c;
+      return ui.field(t("field." + f), c, { span: o.span });
+    }
+    if (o.choices) c = ui.select({ options: o.choices.map((v) => [v, o.prefix ? t(o.prefix + v) : value(v)]), placeholder: o.req ? undefined : "—" });
     else if (o.ref) c = ui.select({ options: o.ref(R, row).map((r) => [r.id, R.label(r)]), placeholder: "—" });
     else if (o.yesno) c = ui.select({ options: [["0", t("no")], ["1", t("yes")]] });
-    else c = ui.input({ type: o.date ? "date" : "text", dir: o.ltr ? "ltr" : null });
+    else c = ui.input({ type: o.date ? "date" : o.time ? "time" : o.num ? "number" : "text", dir: o.ltr || o.time || o.num ? "ltr" : null });
     const v = row ? row[f] : preset[f];
     if (v !== null && v !== undefined) c.value = String(v);
-    if (row && o.fixed) c.disabled = true;
+    if ((row && o.fixed) || (started && o.started)) c.disabled = true;
     inputs[f] = c;
-    return ui.field(t("field." + f), c, { required: o.req, hint: o.fixed && !row ? t("hint.fixed") : null });
+    return ui.field(t("field." + f), c, { required: o.req, span: o.span, hint: o.hint ? t(o.hint) : o.fixed && !row ? t("hint.fixed") : started && o.started ? t("hint.started") : null });
   }))));
   const out = h("div");
   return new Promise((resolve) => {
     ui.dialog({ title: row ? t("edit_title", { code: row.code }) : t("new." + entity), subtitle: row ? t("hint.version", { ver: row.ver }) : null,
-      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card" }[entity], width: entity === "employee" ? 680 : 560,
+      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card", shift: "clock", work_calendar: "calendar", shift_assignment: "calendar-check", skill: "tag", employee_skill: "shield" }[entity],
+      width: entity === "employee" ? 680 : 560,
       body: h("div", { class: "hr-editor" }, sections, out), onClose: (r) => resolve(r === true),
       actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
         const values = {};
-        for (const [f, c] of Object.entries(inputs)) if (f !== "code") values[f] = c.value === "" ? null : f === "critical" ? Number(c.value) : c.value;
+        const nums = new Set(FORM[entity].flatMap(([, fs]) => fs.filter(([, o]) => o.num).map(([f]) => f)));
+        for (const [f, c] of Object.entries(inputs)) {
+          if (f === "code") continue;
+          const raw = c.getValue ? c.getValue() : c.value;
+          values[f] = raw === "" && !c.getValue ? null : f === "critical" || nums.has(f) ? Number(raw) : raw;
+        }
         if (entity === "org_unit" && row) values.type = row.type;
         if (entity === "org_unit" && values.type === "site" && !values.parent_id && R.company) values.parent_id = R.company.id;  // a site belongs to the company
-        const code = inputs.code.value.trim();
+        const code = inputs.code ? inputs.code.value.trim() : row ? row.code : AUTO_CODE[entity](values, R);
         if (!code) { ui.clear(out, ui.banner("bad", t("err.code_required"))); return false; }
         try {
           await api("PUT", "/api/" + entity + "/" + encodeURIComponent(code), { fields: values, expected_ver: row ? row.ver : null });
@@ -228,6 +259,7 @@ function recordFacts(r) {
   return ui.props([[t("rec.version"), ui.ltr(String(r.ver))], [t("rec.created"), r.created_at ? h("span", {}, ui.ltr(r.created_at.slice(0, 16).replace("T", " ")), " · ", ui.ltr(r.created_by || "")) : null],
     [t("rec.updated"), r.updated_at ? h("span", {}, ui.ltr(r.updated_at.slice(0, 16).replace("T", " ")), " · ", ui.ltr(r.updated_by || "")) : null], [t("rec.id"), h("small", {}, ui.ltr(r.id))]]);
 }
+const DAYS = ["SAT", "SUN", "MON", "TUE", "WED", "THU", "FRI"];  // the Egyptian working week starts on Saturday
 const STATUS_ST = { Active: "ok", Leave: "idle", Suspended: "hold", Terminated: "neutral" };
 
 // ------------------------------------------------------------------ Employees (the template of every register)
@@ -388,32 +420,33 @@ function structureScreen({ shell }) {
   load();
   return { el: sc.el };
 }
-function registerScreen(entity, code, titleKey, columns) {
+function registerScreen(entity, code, titleKey, columns, opts = {}) {
+  const o = { write: "hr.org.write", group: "g.organisation", rows: (R) => (entity === "job" ? R.jobs : R.positions), people: true, ...opts };
   return ({ shell }) => {
     let R = null;
     const detail = h("div", { class: "hr-detail" });
     const g = ui.grid(columns(() => R), { rowKey: "id", selection: "multi", totals: true, layoutKey: code, emptyText: t("empty"),
-      onSelect: (sel) => { act.edit.disabled = sel.length !== 1 || !can("hr.org.write"); act.bin.disabled = !sel.length || !can("hr.employees.delete"); drawDetail(sel[0]); },
-      onOpen: (r) => can("hr.org.write") && editRecord(entity, r).then((ok) => ok && load()) });
+      onSelect: (sel) => { act.edit.disabled = sel.length !== 1 || !can(o.write); act.bin.disabled = !sel.length || !can("hr.employees.delete"); drawDetail(sel[0]); },
+      onOpen: (r) => can(o.write) && editRecord(entity, r).then((ok) => ok && load()) });
     const act = {
-      add: ui.button({ label: t("new." + entity), icon: "plus", kind: "primary", disabled: !can("hr.org.write"), onClick: () => editRecord(entity, null).then((ok) => ok && load()) }),
+      add: ui.button({ label: t("new." + entity), icon: "plus", kind: "primary", disabled: !can(o.write), onClick: () => editRecord(entity, null).then((ok) => ok && load()) }),
       edit: ui.button({ label: t("edit"), icon: "edit", disabled: true, onClick: () => editRecord(entity, g.selected()[0]).then((ok) => ok && load()) }),
       bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords(entity, g.selected()).then((ok) => ok && load()) }),
     };
-    const sc = ui.screen({ code, title: t(titleKey), path: [t("g.organisation")], shell, toolbar: [act.add, act.edit, act.bin],
+    const sc = ui.screen({ code, title: t(titleKey), path: [t(o.group)], shell, toolbar: [act.add, act.edit, act.bin],
       standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV(entity), exportLabel: t("export"), columns: () => g.columnsDialog() }, grid: g, detail, detailKey: code + ":detail" });
     function drawDetail(r) {
-      if (!r) { ui.clear(detail, ui.empty({ icon: entity === "job" ? "briefcase" : "id-card", title: t("pick.one") })); return; }
-      const holders = entity === "position" ? R.employees.filter((e) => e.position_id === r.id) : R.employees.filter((e) => (R.jobOf(e) || {}).id === r.id);
+      if (!r) { ui.clear(detail, ui.empty({ icon: o.icon || (entity === "job" ? "briefcase" : "id-card"), title: t("pick.one") })); return; }
+      const holders = !o.people ? [] : entity === "position" ? R.employees.filter((e) => e.position_id === r.id) : R.employees.filter((e) => (R.jobOf(e) || {}).id === r.id);
       ui.clear(detail, h("div", { class: "hr-card-head" }, h("div", { class: "eco-muted" }, ui.ltr(r.code)), h("h2", { text: R.name(r) })),
         ui.section(t("sec." + entity), ui.props(columns(() => R).filter((c) => !c.hidden).map((c) => [c.label, c.value ? String(c.value(r) ?? "") : r[c.key] === null || r[c.key] === undefined ? null : String(r[c.key])]))),
-        ui.section(t("org.people") + " (" + holders.length + ")", holders.length ? h("div", { class: "hr-people" }, holders.map((x) => h("span", { class: "hr-person" }, ui.avatar(x.preferred_name || x.code, 20), h("span", { text: x.preferred_name || x.code })))) : h("span", { class: "eco-muted", text: t("none") })),
+        !o.people ? (o.extra ? o.extra(r, R) : null) : ui.section(t("org.people") + " (" + holders.length + ")", holders.length ? h("div", { class: "hr-people" }, holders.map((x) => h("span", { class: "hr-person" }, ui.avatar(x.preferred_name || x.code, 20), h("span", { text: x.preferred_name || x.code })))) : h("span", { class: "eco-muted", text: t("none") })),
         ui.section(t("tab.record"), recordFacts(r)));
     }
     async function load() {
       const t0 = performance.now();
       g.setLoading();
-      try { R = await refs(true); g.setRows(entity === "job" ? R.jobs : R.positions); sc.result({ ms: Math.round(performance.now() - t0) }); drawDetail(null); }
+      try { R = await refs(true); g.setRows(o.rows(R)); sc.result({ ms: Math.round(performance.now() - t0) }); drawDetail(null); }
       catch (e) { g.setError(e.message); }
     }
     load();
@@ -434,6 +467,283 @@ const positionsScreen = registerScreen("position", "ORG1030", "nav.positions", (
   { key: "holder", label: t("org.holder"), width: 180, value: (r) => (R() ? R().name(R().employees.find((e) => e.position_id === r.id)) || "—" : "") },
   { key: "status", label: t("field.status"), width: 100 },
 ]);
+
+// ------------------------------------------------------------------ Workforce planning (phase 3): shifts, calendars, assignments, roster
+const minutesOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+const shiftFacts = (r) => { const d = ((minutesOf(r.end_time) - minutesOf(r.start_time)) % 1440 + 1440) % 1440 || 1440; return { overnight: minutesOf(r.end_time) <= minutesOf(r.start_time), paid: d - (r.break_minutes || 0) }; };
+const hours = (m) => (m / 60).toFixed(m % 60 ? 2 : 0).replace(/\.?0+$/, "") + " " + t("unit.h");
+const shiftsScreen = registerScreen("shift", "SHF1010", "nav.shifts", () => [
+  { key: "code", label: t("field.code"), type: "code", width: 100, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 180 },
+  { key: "start_time", label: t("field.start_time"), type: "code", width: 90 }, { key: "end_time", label: t("field.end_time"), type: "code", width: 90 },
+  { key: "overnight", label: t("shift.overnight"), width: 110, render: (r) => (shiftFacts(r).overnight ? ui.badge(t("shift.overnight"), "info", "moon") : h("span", { class: "eco-muted", text: "—" })) },
+  { key: "paid", label: t("shift.paid"), width: 110, value: (r) => hours(shiftFacts(r).paid) },
+  { key: "break_minutes", label: t("field.break_minutes"), type: "number", width: 100 }, { key: "grace_minutes", label: t("field.grace_minutes"), type: "number", width: 100 },
+], { write: "hr.shifts.write", group: "g.planning", rows: (R) => R.shifts, people: false, icon: "clock",
+  extra: (r) => ui.section(t("shift.rule"), h("p", { class: "eco-muted hr-small", text: t("shift.rule_text") })) });
+const calendarsScreen = registerScreen("work_calendar", "SHF1020", "nav.calendars", () => [
+  { key: "code", label: t("field.code"), type: "code", width: 100, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 200 },
+  { key: "rest_days", label: t("field.rest_days"), width: 200, value: (r) => (r.rest_days || "").split(",").filter(Boolean).map((d) => t("day." + d.toLowerCase())).join("، ") || "—" },
+  { key: "holidays_n", label: t("cal.holidays_n"), type: "number", width: 110, value: (r) => (r.holidays || "").split(",").filter(Boolean).length },
+  { key: "next_holiday", label: t("cal.next_holiday"), type: "date", width: 130, value: (r) => (r.holidays || "").split(",").find((d) => d >= localToday()) || "" },
+], { write: "hr.shifts.write", group: "g.planning", rows: (R) => R.calendars, people: false, icon: "calendar",
+  extra: (r) => ui.section(t("field.holidays"), (r.holidays || "") ? h("div", { class: "hr-people" }, r.holidays.split(",").map((d) => ui.badge(d, d < localToday() ? "neutral" : "warn", "calendar"))) : h("span", { class: "eco-muted", text: t("none") })) });
+
+function assignmentsScreen({ shell }) {
+  let R = null;
+  const today = localToday();
+  const stateOf = (a) => (a.valid_to && a.valid_to < today ? "ended" : a.valid_from > today ? "future" : "current");
+  const conds = ui.conditionPanel([{ key: "text", label: t("find.person"), placeholder: t("find.person_ph") },
+    { key: "state", label: t("asg.state"), type: "select", options: ["current", "future", "ended"].map((v) => [v, t("asg." + v)]), placeholder: t("all") },
+    { key: "kind", label: t("field.kind"), type: "select", options: [["regular", value("regular")], ["temporary", value("temporary")]], placeholder: t("all") }], { key: "SHF2010", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "state", label: t("asg.state"), type: "status", width: 110, frozen: true, status: (r) => ({ current: "run", future: "setup", ended: "neutral" })[stateOf(r)], label_of: (s, r) => t("asg." + stateOf(r)) },
+    { key: "employee", label: t("field.employee_id"), width: 200, value: (r) => R.label(R.byId.get(r.employee_id)) },
+    { key: "kind", label: t("field.kind"), width: 100, value: (r) => value(r.kind) },
+    { key: "shift", label: t("field.shift_id"), width: 150, value: (r) => R.label(R.byId.get(r.shift_id)) },
+    { key: "calendar", label: t("field.calendar_id"), width: 150, value: (r) => R.label(R.byId.get(r.calendar_id)) },
+    { key: "valid_from", label: t("field.valid_from"), type: "date", width: 110 }, { key: "valid_to", label: t("field.valid_to"), type: "date", width: 110 },
+    { key: "note", label: t("field.note"), width: 200 }, { key: "code", label: t("field.code"), type: "code", width: 170, hidden: true },
+  ], { rowKey: "id", selection: "single", layoutKey: "SHF2010", totals: false, emptyText: t("asg.empty"), rowStatus: (r) => (stateOf(r) === "current" ? "run" : null),
+    onSelect: (sel) => { const a = sel[0]; act.edit.disabled = !a || !can("hr.shifts.write") || stateOf(a) === "ended"; act.bin.disabled = !a || a.valid_from < today || !can("hr.employees.delete"); },
+    onOpen: (r) => can("hr.shifts.write") && editRecord("shift_assignment", r).then((ok) => ok && load()) });
+  const act = {
+    add: ui.button({ label: t("new.shift_assignment"), icon: "plus", kind: "primary", disabled: !can("hr.shifts.write"), onClick: () => editRecord("shift_assignment", null, { kind: "regular", valid_from: today }).then((ok) => ok && load()) }),
+    edit: ui.button({ label: t("asg.edit_or_end"), icon: "edit", disabled: true, onClick: () => editRecord("shift_assignment", g.selected()[0]).then((ok) => ok && load()) }),
+    bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords("shift_assignment", g.selected()).then((ok) => ok && load()) }),
+  };
+  const sc = ui.screen({ code: "SHF2010", title: t("nav.assignments"), path: [t("g.planning")], shell, toolbar: [act.add, act.edit, act.bin],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("assignments"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+    conditions: conds, grid: g, note: h("div", { class: "hr-pad" }, ui.banner("info", t("asg.rule"))) });
+  async function load() {
+    const t0 = performance.now();
+    g.setLoading();
+    try {
+      R = await refs(true);
+      const v = conds.values(), q = (v.text || "").toLowerCase();
+      const rows = await api("GET", "/api/shift_assignment");
+      g.setRows(rows.filter((a) => { const e = R.byId.get(a.employee_id) || {}; return (!q || (e.code + " " + (e.preferred_name || "")).toLowerCase().includes(q)) && (!v.state || stateOf(a) === v.state) && (!v.kind || a.kind === v.kind); }));
+      sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
+    } catch (e) { g.setError(e.message); }
+  }
+  load();
+  return { el: sc.el };
+}
+
+const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return ui.isoDate(d); };
+const weekStart = (iso) => { const d = new Date(iso + "T12:00:00"); return addDays(iso, -((d.getDay() + 1) % 7)); };  // Saturday
+function dayChip(d, onOpen) {
+  const cls = d.status === "work" ? (d.overnight ? "is-night" : "is-work") : "is-" + d.status;
+  const text = d.status === "work" ? d.shift_code : t("plan." + d.status);
+  return h("button", { type: "button", class: ["hr-day", cls, d.source === "override" && "is-changed"], title: d.status === "work" ? d.start.slice(11) + "–" + d.end.slice(11) : text,
+    onclick: (ev) => { ev.stopPropagation(); onOpen(d); } }, h("span", { text }), d.status === "work" ? h("small", {}, ui.ltr(d.start.slice(11) + "–" + d.end.slice(11))) : null);
+}
+function rosterScreen({ shell }) {
+  let R = null, start = weekStart(localToday());
+  const week = ui.input({ type: "date", value: start, width: "150px" });
+  const label = h("strong", { class: "hr-week-label" });
+  const nav = h("div", { class: "hr-row" }, ui.button({ icon: ui.isRTL() ? "chev-right" : "chev-left", title: t("plan.prev"), onClick: () => move(-7) }), week,
+    ui.button({ icon: ui.isRTL() ? "chev-left" : "chev-right", title: t("plan.next"), onClick: () => move(7) }), ui.button({ label: t("pr.this_week"), kind: "ghost", onClick: () => { start = weekStart(localToday()); week.value = start; load(); } }), label);
+  week.addEventListener("change", () => { if (week.value) { start = weekStart(week.value); week.value = start; load(); } });
+  const conds = ui.conditionPanel([{ key: "text", label: t("find.person"), placeholder: t("find.person_ph") }, { key: "unit", label: t("field.org_unit_id"), type: "select", options: [], placeholder: t("all") }],
+    { key: "SHF3010", onSubmit: () => load(), extra: nav });
+  const cols = () => [
+    { key: "code", label: t("field.code"), type: "code", width: 80, frozen: true, total: "count" },
+    { key: "name", label: t("field.preferred_name"), width: 170, frozen: true },
+    ...DAYS.map((_, i) => ({ key: "d" + i, label: t("day." + DAYS[i].toLowerCase()) + " " + addDays(start, i).slice(5).replace("-", "/"), width: 118, cls: "hr-day-cell",
+      render: (r) => dayChip(r["d" + i], openDay), value: (r) => (r["d" + i].status === "work" ? r["d" + i].shift_code : t("plan." + r["d" + i].status)),
+      total: (rows) => t("plan.working_n", { n: rows.filter((x) => x["d" + i].status === "work").length }) })),
+    { key: "hours", label: t("plan.week_hours"), width: 100, type: "number", value: (r) => Math.round(DAYS.reduce((a, _, i) => a + (r["d" + i].paid_minutes || 0), 0) / 6) / 10 },
+  ];
+  let g = null;
+  const host = h("div", { class: "hr-roster-host" });
+  const legend = h("div", { class: "hr-legend" }, [["is-work", "plan.work"], ["is-night", "plan.night"], ["is-rest", "plan.rest"], ["is-holiday", "plan.holiday"], ["is-unscheduled", "plan.unscheduled"], ["is-changed", "plan.changed"]]
+    .map(([c, k]) => h("span", {}, h("i", { class: "hr-day " + c }), t(k))));
+  const sc = ui.screen({ code: "SHF3010", title: t("nav.roster"), path: [t("g.planning")], shell,
+    toolbar: [ui.button({ label: t("plan.swap"), icon: "rotate", disabled: !can("hr.shifts.write"), onClick: () => swapDialog() }), legend],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g && g.exportCSV("roster-" + start), exportLabel: t("export"), print: () => print(), printLabel: t("print") },
+    conditions: conds, body: host });
+  function move(n) { start = addDays(start, n); week.value = start; load(); }
+  function openDay(d) {
+    const emp = R.byId.get(d.employee_id), past = d.work_date < localToday(), mode = { v: d.status === "work" ? "shift" : "off" };
+    const shiftSel = ui.select({ options: R.shifts.map((s) => [s.id, s.code + " · " + s.name + " (" + s.start_time + "–" + s.end_time + ")"]) });
+    const cur = R.shifts.find((s) => s.code === d.shift_code); if (cur) shiftSel.value = cur.id;
+    const reason = ui.input({ placeholder: t("plan.reason_ph") });
+    const pick = ui.segmented({ value: mode.v, options: [["shift", t("plan.work_shift"), "clock"], ["off", t("plan.day_off"), "calendar"]], onChange: (x) => { mode.v = x; shiftRow.hidden = x !== "shift"; } });
+    const shiftRow = ui.field(t("field.shift_id"), shiftSel);
+    shiftRow.hidden = mode.v !== "shift";
+    const out = h("div");
+    ui.dialog({ title: (emp ? emp.preferred_name || emp.code : "") + " · " + d.work_date, subtitle: t("plan.now") + ": " + (d.status === "work" ? d.shift_code + " " + d.start.slice(11) + "–" + d.end.slice(11) : t("plan." + d.status)),
+      icon: "calendar-check", width: 520,
+      body: past ? ui.banner("info", t("plan.past")) : !can("hr.shifts.write") ? ui.banner("info", t("code.perm.denied")) : h("div", { class: "hr-stack" }, pick, shiftRow, ui.field(t("field.reason"), reason, { required: true }), out),
+      actions: past || !can("hr.shifts.write") ? [{ label: t("close"), kind: "primary" }] : [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
+        const code = emp.code + "-" + d.work_date;
+        const existing = (await api("GET", "/api/roster_override")).find((o) => o.code === code);
+        try {
+          await api("PUT", "/api/roster_override/" + encodeURIComponent(code), { fields: { employee_id: emp.id, work_date: d.work_date, shift_id: mode.v === "shift" ? shiftSel.value : null, reason: reason.value }, expected_ver: existing ? existing.ver : null });
+          ui.toast({ kind: "ok", title: t("saved"), text: code }); load(); return true;
+        } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; }
+      } }] });
+  }
+  function swapDialog() {
+    const people = R.employees.map((e) => [e.code, e.code + " · " + (e.preferred_name || "")]);
+    const a = ui.select({ options: people }), b = ui.select({ options: people }), day = ui.input({ type: "date", value: localToday() }), reason = ui.input({ placeholder: t("plan.reason_ph") });
+    if (people[1]) b.value = people[1][0];
+    const out = h("div", { class: "eco-span-2" });
+    ui.dialog({ title: t("plan.swap"), icon: "rotate", width: 560, body: h("div", { class: "eco-form" }, ui.field(t("plan.person_a"), a, { required: true }), ui.field(t("plan.person_b"), b, { required: true }),
+      ui.field(t("plan.day"), day, { required: true }), ui.field(t("field.reason"), reason), h("div", { class: "eco-span-2" }, ui.banner("info", t("plan.swap_help"))), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("plan.swap"), kind: "primary", icon: "rotate", onClick: async () => {
+      try { await api("POST", "/api/schedule/swap", { date: day.value, a: a.value, b: b.value, reason: reason.value }); ui.toast({ kind: "ok", title: t("plan.swapped"), keep: true }); load(); return true; }
+      catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; }
+    } }] });
+  }
+  async function load() {
+    const t0 = performance.now();
+    try {
+      R = await refs(true);
+      const v = conds.values();
+      fillOptions(conds.control("unit"), R.units.filter((u) => u.type === "department" || u.type === "section"), v.unit);
+      label.textContent = start + " → " + addDays(start, 6);
+      const days = await api("GET", "/api/schedule?from=" + start + "&to=" + addDays(start, 6));
+      const rows = new Map();
+      for (const d of days) {
+        const e = R.byId.get(d.employee_id);
+        if (!rows.has(d.employee_id)) rows.set(d.employee_id, { id: d.employee_id, code: e.code, name: e.preferred_name || "", emp: e });
+        rows.get(d.employee_id)["d" + DAYS.findIndex((_, i) => addDays(start, i) === d.work_date)] = d;
+      }
+      const q = (v.text || "").toLowerCase();
+      const list = [...rows.values()].filter((r) => r.emp.employment_status !== "Terminated" && (!q || (r.code + " " + r.name).toLowerCase().includes(q)) && (!v.unit || (R.unitOf(r.emp) || {}).id === v.unit || (R.unitOf(r.emp) || {}).parent_id === v.unit));
+      g = ui.grid(cols(), { rows: list, rowKey: "id", selection: "single", totals: true, layoutKey: null, rowHeight: 36, emptyText: t("plan.empty") });
+      g.el.classList.add("hr-roster");
+      ui.clear(host, g.el);
+      sc.result && sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
+    } catch (e) { ui.clear(host, ui.empty({ icon: "x-octagon", title: e.message })); }
+  }
+  load();
+  return { el: sc.el };
+}
+
+const VERDICT_ST = { as_planned: "ok", absent: "bad", no_record: "warn", leave: "idle", worked_off_day: "info", off: "neutral", no_schedule: "warn", none: "neutral" };
+function compareScreen({ shell }) {
+  let R = null;
+  const today = localToday();
+  const conds = ui.conditionPanel([{ key: "days", label: t("cmp.period"), type: "daterange", required: true, default: [weekStart(today), today], span: 2 },
+    { key: "verdict", label: t("cmp.verdict"), type: "select", options: Object.keys(VERDICT_ST).map((k) => [k, t("verdict." + k)]), placeholder: t("all") },
+    { key: "text", label: t("find.person"), placeholder: t("find.person_ph") }], { key: "SHF3020", onSubmit: () => load() });
+  const counts = h("div", { class: "hr-pad hr-row" });
+  const g = ui.grid([
+    { key: "verdict", label: t("cmp.verdict"), type: "status", width: 200, frozen: true, status: (r) => VERDICT_ST[r.verdict], label_of: (s, r) => t("verdict." + r.verdict) },
+    { key: "employee_code", label: t("field.code"), type: "code", width: 80 }, { key: "name", label: t("field.preferred_name"), width: 170, value: (r) => R.name(R.byId.get(r.employee_id)) },
+    { key: "work_date", label: t("plan.day"), type: "date", width: 104 },
+    { key: "planned", label: t("cmp.planned"), width: 170, value: (r) => (r.status === "work" ? r.shift_code + " " + r.start.slice(11) + "–" + r.end.slice(11) : t("plan." + r.status)) },
+    { key: "attendance_status", label: t("cmp.attended"), width: 120 }, { key: "worked_minutes", label: t("cmp.worked"), type: "number", width: 110 },
+    { key: "paid_minutes", label: t("cmp.planned_minutes"), type: "number", width: 120 },
+  ], { rowKey: "key", selection: "single", totals: false, layoutKey: "SHF3020", emptyText: t("cmp.empty"), idleText: t("hint.inquiry"), rowStatus: (r) => (r.verdict === "absent" ? "down" : r.verdict === "as_planned" ? "run" : null) });
+  const sc = ui.screen({ code: "SHF3020", title: t("nav.compare"), path: [t("g.planning")], shell,
+    standard: { inquiry: () => load(), inquiryLabel: t("inquiry"), reset: () => conds.reset(), resetLabel: t("reset"), export: () => g.exportCSV("planned-vs-attended"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+    conditions: conds, grid: g, note: counts });
+  async function load() {
+    const missing = conds.missing();
+    if (missing.length) { ui.toast({ kind: "warn", text: ui.kitText("required_missing", { fields: missing.join(", ") }) }); return; }
+    const t0 = performance.now();
+    g.setLoading();
+    try {
+      R = await refs(true);
+      const v = conds.values(), q = (v.text || "").toLowerCase();
+      const res = await api("GET", "/api/schedule/compare?from=" + v.days[0] + "&to=" + v.days[1]);
+      const rows = res.days.map((d) => ({ ...d, key: d.employee_id + d.work_date })).filter((d) => d.verdict !== "none" && (!v.verdict || d.verdict === v.verdict) && (!q || (d.employee_code + " " + R.name(R.byId.get(d.employee_id))).toLowerCase().includes(q)));
+      g.setRows(rows);
+      const by = {};
+      res.days.forEach((d) => { by[d.verdict] = (by[d.verdict] || 0) + 1; });
+      ui.clear(counts, Object.keys(VERDICT_ST).filter((k) => by[k] && k !== "none").map((k) => ui.statusChip(VERDICT_ST[k], t("verdict." + k) + " · " + by[k])),
+        res.unknown_attendance_people.length ? ui.badge(t("cmp.unknown", { n: res.unknown_attendance_people.length }), "warn", "alert") : null);
+      sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
+    } catch (e) { g.setError(e.message); }
+  }
+  return { el: sc.el };
+}
+
+// ------------------------------------------------------------------ Skills (phase 5)
+const QSTATE = { valid: "ok", expiring: "warn", expired: "bad", not_yet: "neutral" };
+const qState = (q, on) => (q.certified_on > on ? "not_yet" : q.expires_on && q.expires_on < on ? "expired" : q.expires_on && (new Date(q.expires_on) - new Date(on)) / 864e5 <= 30 ? "expiring" : "valid");
+const skillsScreen = registerScreen("skill", "SKL1010", "nav.skills", (R) => [
+  { key: "code", label: t("field.code"), type: "code", width: 110, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 },
+  { key: "category", label: t("field.category"), width: 150 }, { key: "validity_months", label: t("field.validity_months"), type: "number", width: 130 },
+], { write: "hr.skills.write", group: "g.skills", rows: (R) => R.skills, people: false, icon: "tag" });
+function qualificationsScreen({ shell }) {
+  let R = null;
+  const today = localToday();
+  const conds = ui.conditionPanel([{ key: "text", label: t("find.person"), placeholder: t("find.person_ph") }, { key: "skill", label: t("field.skill_id"), type: "select", options: [], placeholder: t("all") },
+    { key: "state", label: t("qual.state"), type: "select", options: Object.keys(QSTATE).map((k) => [k, t("qual." + k)]), placeholder: t("all") }], { key: "SKL2010", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "state", label: t("qual.state"), type: "status", width: 120, frozen: true, status: (r) => QSTATE[qState(r, today)], label_of: (s, r) => t("qual." + qState(r, today)) },
+    { key: "employee", label: t("field.employee_id"), width: 200, value: (r) => R.label(R.byId.get(r.employee_id)) },
+    { key: "skill", label: t("field.skill_id"), width: 200, value: (r) => R.label(R.byId.get(r.skill_id)) },
+    { key: "level", label: t("field.level"), width: 150, render: (r) => h("span", { class: "hr-level" }, [1, 2, 3, 4].map((n) => h("i", { class: n <= r.level ? "is-on" : null })), h("span", { text: t("level." + r.level) })) },
+    { key: "certified_on", label: t("field.certified_on"), type: "date", width: 110 }, { key: "expires_on", label: t("field.expires_on"), type: "date", width: 110 },
+    { key: "evidence", label: t("field.evidence"), width: 200 },
+  ], { rowKey: "id", selection: "single", layoutKey: "SKL2010", emptyText: t("qual.empty"), rowStatus: (r) => (qState(r, today) === "expired" ? "down" : null),
+    onSelect: (sel) => { act.edit.disabled = !sel.length || !can("hr.skills.write"); act.bin.disabled = !sel.length || !can("hr.employees.delete"); },
+    onOpen: (r) => can("hr.skills.write") && editRecord("employee_skill", r).then((ok) => ok && load()) });
+  const act = {
+    add: ui.button({ label: t("new.employee_skill"), icon: "plus", kind: "primary", disabled: !can("hr.skills.write"), onClick: () => editRecord("employee_skill", null, { level: 3, certified_on: today }).then((ok) => ok && load()) }),
+    edit: ui.button({ label: t("qual.recertify"), icon: "refresh", disabled: true, onClick: () => editRecord("employee_skill", g.selected()[0]).then((ok) => ok && load()) }),
+    bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords("employee_skill", g.selected()).then((ok) => ok && load()) }),
+  };
+  const sc = ui.screen({ code: "SKL2010", title: t("nav.qualifications"), path: [t("g.skills")], shell, toolbar: [act.add, act.edit, act.bin],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("qualifications"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+    conditions: conds, grid: g });
+  async function load() {
+    const t0 = performance.now();
+    g.setLoading();
+    try {
+      R = await refs(true);
+      const v = conds.values(), q = (v.text || "").toLowerCase();
+      fillOptions(conds.control("skill"), R.skills, v.skill);
+      const rows = await api("GET", "/api/employee_skill");
+      g.setRows(rows.filter((r) => { const e = R.byId.get(r.employee_id) || {}; return (!q || (e.code + " " + (e.preferred_name || "")).toLowerCase().includes(q)) && (!v.skill || r.skill_id === v.skill) && (!v.state || qState(r, today) === v.state); }));
+      sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
+    } catch (e) { g.setError(e.message); }
+  }
+  load();
+  return { el: sc.el };
+}
+function matrixScreen({ shell }) {
+  let R = null;
+  const today = localToday(), host = h("div", { class: "hr-roster-host" });
+  const conds = ui.conditionPanel([{ key: "text", label: t("find.person"), placeholder: t("find.person_ph") }, { key: "unit", label: t("field.org_unit_id"), type: "select", options: [], placeholder: t("all") },
+    { key: "category", label: t("field.category"), placeholder: t("all") }], { key: "SKL3010", onSubmit: () => load() });
+  const legend = h("div", { class: "hr-legend" }, Object.keys(QSTATE).map((k) => h("span", {}, ui.statusChip(QSTATE[k], t("qual." + k)))));
+  const sc = ui.screen({ code: "SKL3010", title: t("nav.matrix"), path: [t("g.skills")], shell, toolbar: [legend],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", print: () => print(), printLabel: t("print") }, conditions: conds, body: host });
+  async function load() {
+    try {
+      R = await refs(true);
+      const v = conds.values();
+      fillOptions(conds.control("unit"), R.units.filter((u) => u.type === "department" || u.type === "section"), v.unit);
+      const quals = await api("GET", "/api/employee_skill");
+      const held = new Map(quals.map((q) => [q.employee_id + "|" + q.skill_id, q]));
+      const skillCols = R.skills.filter((k) => !v.category || (k.category || "").toLowerCase().includes(v.category.toLowerCase()));
+      const cell = (e, k) => {
+        const q = held.get(e.id + "|" + k.id);
+        return h("button", { type: "button", class: ["hr-q", q ? "is-" + qState(q, today) : "is-none"], title: q ? t("level." + q.level) + (q.expires_on ? " · " + t("field.expires_on") + " " + q.expires_on : "") : t("qual.none"),
+          onclick: (ev) => { ev.stopPropagation(); if (can("hr.skills.write")) editRecord("employee_skill", q || null, { employee_id: e.id, skill_id: k.id, level: 3, certified_on: today }).then((ok) => ok && load()); } },
+        q ? [1, 2, 3, 4].map((n) => h("i", { class: n <= q.level ? "is-on" : null })) : h("span", { text: "+" }));
+      };
+      const q = (v.text || "").toLowerCase();
+      const rows = R.employees.filter((e) => e.employment_status !== "Terminated" && (!q || (e.code + " " + (e.preferred_name || "")).toLowerCase().includes(q)) &&
+        (!v.unit || (R.unitOf(e) || {}).id === v.unit || (R.unitOf(e) || {}).parent_id === v.unit));
+      const g = ui.grid([{ key: "code", label: t("field.code"), type: "code", width: 80, frozen: true, total: "count" }, { key: "preferred_name", label: t("field.preferred_name"), width: 170, frozen: true },
+        { key: "job", label: t("field.job_id"), width: 150, value: (e) => R.name(R.jobOf(e)) },
+        ...skillCols.map((k) => ({ key: "s_" + k.code, label: k.code, title: k.name, width: 96, align: "center", render: (e) => cell(e, k), value: (e) => { const x = held.get(e.id + "|" + k.id); return x ? x.level : ""; },
+          total: (vis) => t("qual.holders_n", { n: vis.filter((e) => { const x = held.get(e.id + "|" + k.id); return x && qState(x, today) !== "expired"; }).length }) }))],
+      { rows, rowKey: "id", selection: "single", totals: true, rowHeight: 32, emptyText: skillCols.length ? t("empty") : t("qual.no_skills") });
+      g.el.classList.add("hr-roster");
+      ui.clear(host, g.el);
+    } catch (e) { ui.clear(host, ui.empty({ icon: "x-octagon", title: e.message })); }
+  }
+  load();
+  return { el: sc.el };
+}
 
 // ------------------------------------------------------------------ Attendance (the migrated application, behind the same sign-in)
 function attendanceScreen({ shell }) {
@@ -518,7 +828,8 @@ function usersScreen({ shell }) {
 }
 const PERM_GROUPS = [["perm_group.people", ["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
   ["perm_group.organisation", ["hr.org.read", "hr.org.write"]], ["perm_group.attendance", ["hr.attendance.read", "hr.attendance.upload"]],
-  ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
+  ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]],
+    ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
 function profilesScreen({ shell }) {
   let profiles = [], current = null;
   const list = h("div", { class: "hr-plist" }), matrix = h("div", { class: "hr-matrix" });
@@ -771,6 +1082,14 @@ const SCREENS = {
   ORG1010: ["nav.structure", "sitemap", "hr.org.read", structureScreen],
   ORG1020: ["nav.jobs", "briefcase", "hr.org.read", jobsScreen],
   ORG1030: ["nav.positions", "id-card", "hr.org.read", positionsScreen],
+  SHF3010: ["nav.roster", "calendar-check", "hr.shifts.read", rosterScreen],
+  SHF2010: ["nav.assignments", "users", "hr.shifts.read", assignmentsScreen],
+  SHF1010: ["nav.shifts", "clock", "hr.shifts.read", shiftsScreen],
+  SHF1020: ["nav.calendars", "calendar", "hr.shifts.read", calendarsScreen],
+  SHF3020: ["nav.compare", "activity", "hr.shifts.read", compareScreen],
+  SKL3010: ["nav.matrix", "table", "hr.skills.read", matrixScreen],
+  SKL2010: ["nav.qualifications", "shield", "hr.skills.read", qualificationsScreen],
+  SKL1010: ["nav.skills", "tag", "hr.skills.read", skillsScreen],
   SEC9010: ["nav.users", "user", "admin.users.manage", usersScreen],
   SEC9020: ["nav.profiles", "shield", "admin.users.manage", profilesScreen],
   SEC9030: ["nav.audit", "history", "admin.audit.read", auditScreen],
@@ -778,7 +1097,7 @@ const SCREENS = {
   SYS9100: ["nav.health", "activity", "admin.system.read", healthScreen],
   SYS9060: ["nav.settings", "settings", "admin.settings.manage", settingsScreen],
 };
-const MENU = [["people", "users", ["EMP1010", "ATT2010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060"]]];
+const MENU = [["people", "users", ["EMP1010", "ATT2010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060"]]];
 function showShell() {
   const screens = {};
   for (const [code, [key, icon, perm, create]] of Object.entries(SCREENS)) {

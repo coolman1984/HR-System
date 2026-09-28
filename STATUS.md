@@ -46,6 +46,8 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | Module and edition map (`kernel`, `attendance`, `leave` built) | `hr_core/modules.py` | `TEST_HR_REGISTRY.py` |
 | Documentation guard | `TEST_DOCS_CURRENT.py` | itself, and its planted bugs in `migration/mutations.py` |
 | One product (phase 2.5): one server, one port, one sign-in; screens for employees and organisation, attendance, users and permissions, backups, system health, settings; English and Arabic dictionaries with the same keys | `hr_main.py`, `hr_core/app.py`, `hr_core/web.py`, `hr_core/web/`, `hr_core/api.py` | `TEST_HR_DELIVERY.py` |
+| `shifts` (phase 3, 2026-09-28, owner's order) — shifts (overnight = one work date), working calendars (rest days, holidays), effective-dated assignments (regular never overlap; temporary covers regular; a started one only ends, not before yesterday; past days never re-planned), day changes and swaps in one save, the planned schedule, planned vs attended comparison, published as `eco.schedule_day.v1` (14 days ahead); screens Roster, Assignments, Shifts, Calendars, Planned vs attended; data version 2 | `hr_core/scheduling.py`, `hr_core/registry.py`, `hr_core/service.py`, `hr_core/api.py`, `eco_publisher.py`, `hr_core/web/app.js` | `TEST_HR_WORKFORCE.py` (50), GMES `hr-e2e` (the plan mirrored, with its age) |
+| `skills` (phase 5, 2026-09-28) — skills catalogue with validity, qualifications per person (level 1-4, certified, expiry from the skill's validity), published as `eco.qualification.v1` (a withdrawn one as inactive); GMES refuses a person at a station whose required skill they do not hold validly at the level; screens Skills matrix, Qualifications, Skills catalogue | `hr_core/skills.py`, `hr_core/registry.py`, `eco_publisher.py`, `hr_core/web/app.js` | `TEST_HR_WORKFORCE.py`, GMES `hr-boundary` and `hr-e2e` |
 | The product shell (phase 2.6, UX): one application shell built from the ecosystem's interface kit (menu tree, screen search, tabs, standard screen, dense grid, dialogs); the kit is the unchanged, hash-pinned copy from GMES; server values written as text only | `hr_core/web/app.js`, `hr_core/web/hr.css`, `hr_core/web/eco-ui/`, `hr_core/eco_ui_pin.json` | `TEST_HR_DELIVERY.py` (76), screenshots `docs/ux/` |
 | The locked attendance engine behind the same sign-in (`hr.attendance.read` / `hr.attendance.upload`), same golden numbers, uploads audited | `hr_core/attendance.py` | `TEST_HR_DELIVERY.py` |
 | Installation home outside the program, company identity from its owner (Mizan) or local and provisional, never changed silently | `hr_core/home.py`, `hr_core/registry.py` | `TEST_HR_DELIVERY.py` |
@@ -62,6 +64,8 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | Company identity | From Mizan at setup, or local and provisional | The adoption step (a local id later matched to Mizan's) is planned, not built |
 | Eco publisher in the product | Built and tested (`eco_publisher.py`) and compiled into the program | Not started by the installed program yet (no screen to configure `ECO_GMES_URL`) |
 | Leave | Linked to attendance days at import | Leave requests, approval and balances as an HR module |
+| Phase 3 gate | Everything in the `shifts` row above | Excel import of shifts and rosters (re-import writes nothing the second time), planned overtime, leave shown on the plan; the phase is not marked done until these exist |
+| Phase 5 gate | Qualifications and GMES's station check, end to end | `training`; a GMES screen to configure station requirements (today an API: `PUT /api/stations/<code>/requirements`) |
 | Attendance ↔ official employee | Attendance is enriched from the **uploaded** employee file | Binding to the registry employee (phase 4) |
 | LAN use | `hr_server.py serve --host` | No TLS yet (BAMS's pinned-certificate pattern is the plan, `docs/HR_SECURITY.md` §4) |
 | Windows | CI runs every Python test on Windows and accepts the installed program | The protected-workbook Excel path never ran on a PC with Excel |
@@ -71,10 +75,8 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 
 | What | Phase |
 |---|---|
-| `shifts` — shift definitions, calendars, schedules, effective-dated assignments, rosters, swaps, planned overtime, conflicts; planned state separate from actual attendance; minimal read-only contract for GMES | 3 (next) |
 | `overtime` — requests, approval and actuals, bound to shifts and attendance | 4 |
 | Attendance and leave bound to the official employee and shift masters | 4 |
-| `skills` — skills, certification, station and equipment qualification, contract for GMES | 5 |
 | `training` — courses and completions that grant skills | 5 |
 | Personal data (identity, contacts, dependants) behind encryption and permissions | after 5 |
 | Company identity adoption: a provisional local id matched to Mizan's, explicitly | when a customer needs it |
@@ -83,10 +85,12 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 
 | What | Why not built |
 |---|---|
-| `payroll` — HR calculates pay; Mizan books one summarized entry per period (`hr.payroll_period.v1`) | Needs stable employees, attendance, leave and overtime first (`docs/HR_SYSTEM_DESIGN.md` §6). Mizan never stores employees or computes pay. |
+| `payroll` — HR calculates pay; Mizan books one summarized entry per period (`hr.payroll_period.v1`); detailed design: `docs/HR_PAYROLL_DESIGN.md` (data, calculation order, contract, four-eyes rights, tests) | Needs stable employees, attendance, leave and overtime first (`docs/HR_SYSTEM_DESIGN.md` §6; owner's decision 2026-09-28: design now, build after the gate). Mizan never stores employees or computes pay. |
 
 ## Next phase — 3: shifts, calendars, schedules and assignments
 
+**Built on 2026-09-28** (see `shifts` under Built and tested); still owed for the gate: Excel import of shifts and
+rosters, planned overtime and leave on the plan (Partially built). The original plan, kept for the gate:
 Model separately: shift definitions (start/end, overnight, breaks, working duration, grace rules), working calendars
 (weekly rest days, holidays), effective-dated employee shift assignments, temporary assignments, daily roster
 overrides, shift swaps, rest days, leave interactions, planned overtime and schedule conflicts. Everything goes through
@@ -115,6 +119,7 @@ python TEST_ECO_PUBLISHER.py
 python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py
 python TEST_HR_DELIVERY.py
+python TEST_HR_WORKFORCE.py
 python TEST_DOCS_CURRENT.py
 python migration/mutations.py           every planted bug caught
 python BUILD_PROJECT.py
@@ -138,20 +143,21 @@ phase: 2.5
 stage: 2.5 one installable product + 2.6 product shell
 updated: 2026-09-28
 done_phases: 1 2
-hr_core: api app attendance auth backup canonical device home importer journal modules registry service signing upgrade version web
+hr_core: api app attendance auth backup canonical device home importer journal modules registry scheduling service signing skills upgrade version web
 root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_main hr_registry hr_server
-root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
-contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1
-entities: org_unit job position employee
+root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_FOUNDATION TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
+contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1 eco.qualification.v1 eco.schedule_day.v1
+entities: org_unit job position employee shift work_calendar shift_assignment roster_override skill employee_skill
 permissions: hr.org.read hr.org.write hr.employees.read hr.employees.write hr.employees.delete hr.recycle.restore hr.import.run
 permissions: admin.users.manage admin.audit.read admin.backup.manage admin.backup.restore admin.system.read
 permissions: hr.attendance.read hr.attendance.upload admin.settings.manage
+permissions: hr.shifts.read hr.shifts.write hr.skills.read hr.skills.write
 module: kernel built
 module: attendance built
 module: leave built
-module: shifts planned
+module: shifts built
 module: overtime planned
-module: skills planned
+module: skills built
 module: training planned
 module: payroll design_only
 command: hr_server serve
@@ -175,10 +181,13 @@ route: POST /api/logout
 route: GET /api/me
 route: POST /api/password
 route: GET /api/recycle
-route: GET /api/(org_unit|job|position|employee)
-route: PUT /api/(org_unit|job|position|employee)/([^/]+)
-route: DELETE /api/(org_unit|job|position|employee)/([^/]+)
-route: POST /api/(org_unit|job|position|employee)/([^/]+)/restore
+route: GET /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)
+route: PUT /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)
+route: DELETE /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)
+route: POST /api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill)/([^/]+)/restore
+route: GET /api/schedule
+route: GET /api/schedule/compare
+route: POST /api/schedule/swap
 route: GET /api/admin/users
 route: POST /api/admin/users
 route: PATCH /api/admin/users/([^/]+)
@@ -193,5 +202,5 @@ route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
 route: GET /api/info
 route: GET /api/admin/settings
 route: PUT /api/admin/settings
-mutations: 62
+mutations: 71
 ```

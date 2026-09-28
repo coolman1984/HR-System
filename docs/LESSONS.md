@@ -46,6 +46,9 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L35** Review screens by using them in a real browser, not only by looking at screenshots.
 - **L36** Build screens from one kit (shell, standard screen, grid, dialog); a screen styled on its own is a bug.
 - **L37** A shared file has one home: the interface kit is changed in GMES and copied here with a pinned hash.
+- **L38** Effective dating is a rule on writes: what has started only ends; the past is never re-planned.
+- **L39** Anything stored with a backup (a fingerprint) is extended only additively, or older backups stop rehearsing.
+- **L40** Money waits for its inputs: payroll is built only when attendance, leave and overtime are bound to the employee.
 
 ## Dependencies
 - **L13** Probe an optional native library by what it does, not by whether it imports: a broken `cryptography`

@@ -52,7 +52,10 @@ look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-accep
 ## Next step
 0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his G-MES screenshot comparison to the TOKENS in
    GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
-   **No shifts, skills or payroll until he approves.** Never edit `hr_core/web/eco-ui/` in this repository.
+   Never edit `hr_core/web/eco-ui/` in this repository.
+0b. Shifts (phase 3) and skills (phase 5) were built on the owner's order (2026-09-28); still owed for their gates:
+   Excel import of shifts/rosters, planned overtime, leave on the plan, training, a GMES screen for station requirements.
+   **Payroll is design only** (`docs/HR_PAYROLL_DESIGN.md`): do not build it before its gate (§2 there).
 1. Close phase 2.5: the CI job `windows-installer` is green (31/31 on b3d106d); still owed: the owner's clean-PC run in
    Windows Sandbox; mark phase 2.5 done in `docs/HR_SYSTEM_DESIGN.md` §7 and move the `phase` line here and in
    `STATUS.md` to 3.

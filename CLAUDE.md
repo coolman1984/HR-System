@@ -47,7 +47,10 @@ design only, checked against the code), the top of `HISTORY.md` and `docs/LESSON
 - Edit `eco_schemas/`: they are generated in `coolman1984/GMES/packages/eco-contracts` and copied here unchanged.
 - Edit `hr_core/web/eco-ui/` (the ecosystem's interface kit): it is changed in `coolman1984/GMES/packages/eco-ui/src`, then
   copied here unchanged with a new `hr_core/eco_ui_pin.json`. Screens are built from the kit, not styled one by one.
-- Resume business features (shifts, skills, payroll) before the owner approves the product shell (phase 2.6, 2026-09-28).
+- Build payroll before its gate in `docs/HR_PAYROLL_DESIGN.md` §2 is green (owner's decision 2026-09-28: shifts and skills
+  built, payroll designed only).
+- Re-plan a day before today, change a started assignment other than ending it, or change the times of a shift / the rest
+  days of a calendar that people already worked (`hr_core/scheduling.py`): the past schedule is history.
 - Edit `hr_core/vendor/` (BAMS's signing code, byte-for-byte, hash-pinned) or keep a second, modified copy of any
   security algorithm. Fixes go to BAMS first, then are copied here unchanged (ADR-HR-002).
 - Reach the registry or the accounts from a new entrance without `hr_core/service.py` (`require()` + audit), or
@@ -70,6 +73,7 @@ python TEST_ECO_PUBLISHER.py
 python TEST_HR_REGISTRY.py
 python TEST_HR_SECURITY.py         phase-2 exit gate (HR_REQUIRE_CROSSCHECK=1 with `cryptography` installed: CI does)
 python TEST_HR_DELIVERY.py          phase 2.5: one product, updates, failures, power cut, recovery installer, languages
+python TEST_HR_WORKFORCE.py         phases 3 and 5: shifts, schedule, attendance comparison, skills, what GMES receives
 python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py

@@ -13,10 +13,15 @@ from .auth import PERMISSIONS, Auth, AuthError
 from .backup import Backups, BackupError, recover_lost_journal
 from .device import Device
 from .journal import Journal
+from . import scheduling, skills
 from .registry import ENTITIES, Conflict, Registry, RegistryError
 
-WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr.org.write", "employee": "hr.employees.write"}
-READ_PERM = {"org_unit": "hr.org.read", "job": "hr.org.read", "position": "hr.org.read", "employee": "hr.employees.read"}
+WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr.org.write", "employee": "hr.employees.write",
+              "shift": "hr.shifts.write", "work_calendar": "hr.shifts.write", "shift_assignment": "hr.shifts.write", "roster_override": "hr.shifts.write",
+              "skill": "hr.skills.write", "employee_skill": "hr.skills.write"}
+READ_PERM = {"org_unit": "hr.org.read", "job": "hr.org.read", "position": "hr.org.read", "employee": "hr.employees.read",
+             "shift": "hr.shifts.read", "work_calendar": "hr.shifts.read", "shift_assignment": "hr.shifts.read", "roster_override": "hr.shifts.read",
+             "skill": "hr.skills.read", "employee_skill": "hr.skills.read"}
 
 
 class HRService:
@@ -105,6 +110,17 @@ class HRService:
             raise Conflict("ver.required", f"{entity} {code} exists: send the version you edited (expected_ver)")
         if not cur and expected_ver is not None:
             raise Conflict("ver.conflict", f"{entity} {code} does not exist any more")
+        if entity == "employee_skill" and cur and fields.get("certified_on") and fields["certified_on"] != cur.get("certified_on") \
+                and fields.get("expires_on") == cur.get("expires_on"):
+            # recertified with the old expiry still in the form: if that expiry came from the skill's validity, it moves too
+            skill = self.registry.by_id("skill", cur["skill_id"])
+            if cur.get("expires_on") == skills.default_expiry(cur.get("certified_on"), skill and skill.get("validity_months")):
+                fields = dict(fields, expires_on=None)
+        if entity == "employee_skill" and not fields.get("expires_on"):
+            skill = self.registry.by_id("skill", fields.get("skill_id") or (cur or {}).get("skill_id"))
+            expiry = skills.default_expiry(fields.get("certified_on") or (cur or {}).get("certified_on"), skill and skill.get("validity_months"))
+            if expiry:
+                fields = dict(fields, expires_on=expiry)  # a blank expiry takes the skill's validity
         seq = self._commit(user, ip, f"{'Changed' if cur else 'Created'} {entity} {code}",
                            [self.registry.op_put(entity, code, fields, expected_ver)], "record.saved", entity, code)
         return {"seq": seq, "row": self.registry.get(entity, code, org_type=fields.get("type") if entity == "org_unit" else None)}
@@ -178,6 +194,47 @@ class HRService:
         return seq
 
     # ------------------------------------------------------------------ audit, health, backups
+    # ------------------------------------------------------------------ the planned schedule (phase 3)
+    def schedule(self, user, first, last, employee_code=None, ip=None):
+        self.require(user, "hr.shifts.read", ip, "schedule")
+        plan = scheduling.Schedule(self.registry)
+        ids = None
+        if employee_code:
+            emp = self.registry.get("employee", employee_code)
+            if not emp:
+                raise RegistryError("employee.not_found", f"employee {employee_code} does not exist")
+            ids = [emp["id"]]
+        try:
+            return plan.days(first, last, ids)
+        except scheduling.ScheduleError as exc:
+            raise RegistryError(exc.code, str(exc)) from None
+
+    def compare(self, user, first, last, attendance_rows, ip=None):
+        """Planned days against attendance (needs both rights: it shows both)."""
+        self.require(user, "hr.attendance.read", ip, "schedule.compare")
+        days = self.schedule(user, first, last, None, ip)
+        return scheduling.compare(days, attendance_rows, scheduling.Schedule(self.registry).employees)
+
+    def swap(self, user, work_date, code_a, code_b, reason, ip=None):
+        """Two people exchange their shifts of one day: two day changes in ONE save (both or neither)."""
+        self.require(user, "hr.shifts.write", ip, f"swap:{code_a}:{code_b}")
+        a, b = self.registry.get("employee", code_a), self.registry.get("employee", code_b)
+        if not a or not b or a["id"] == b["id"]:
+            raise RegistryError("swap.people", "a swap needs two different, existing employees")
+        plan = scheduling.Schedule(self.registry)
+        da, db = plan.day(a["id"], work_date), plan.day(b["id"], work_date)
+        if da["status"] != "work" and db["status"] != "work":
+            raise RegistryError("swap.nothing", "neither person works that day: there is nothing to swap")
+        shift_id = lambda d: next((s["id"] for s in plan.shifts.values() if s["code"] == d["shift_code"] and not s["deleted"]), None) if d["status"] == "work" else None  # noqa: E731
+        why = (reason or "").strip() or "swap"
+        ops = []
+        for emp, other, day in ((a, b, db), (b, a, da)):
+            code = f"{emp['code']}-{work_date}"
+            cur = self.registry.get("roster_override", code)
+            ops.append(self.registry.op_put("roster_override", code, {"employee_id": emp["id"], "work_date": work_date, "shift_id": shift_id(day),
+                                                                     "reason": f"{why} (with {other['code']})"}, cur["ver"] if cur else None))
+        return self._commit(user, ip, f"Swapped {code_a} and {code_b} on {work_date}", ops, "schedule.swapped", "roster_override", f"{code_a}/{code_b}")
+
     def audit_entries(self, user, category=None, limit=200, ip=None):
         self.require(user, "admin.audit.read", ip, "audit")
         return self.journal.audit_entries(category, limit)

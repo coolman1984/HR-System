@@ -8,9 +8,9 @@ MODULES = {
     "kernel": {"depends_on": [], "status": "built", "what": "company, organisation, jobs, positions, employee registry, journal, audit, eco publisher"},
     "attendance": {"depends_on": ["kernel"], "status": "built", "what": "the migrated attendance application (locked engine), daily import, dashboard, history"},
     "leave": {"depends_on": ["attendance"], "status": "built", "what": "leave requests linked to attendance days (inside the migrated engine)"},
-    "shifts": {"depends_on": ["kernel"], "status": "planned", "what": "shift definitions, rosters and assignments independent of attendance"},
+    "shifts": {"depends_on": ["kernel"], "status": "built", "what": "shifts, working calendars, effective-dated assignments, day changes and swaps, the planned schedule compared with attendance"},
     "overtime": {"depends_on": ["shifts", "attendance"], "status": "planned", "what": "overtime requests, approval and actuals"},
-    "skills": {"depends_on": ["kernel"], "status": "planned", "what": "skills, certifications, station qualification for manufacturing"},
+    "skills": {"depends_on": ["kernel"], "status": "built", "what": "skills catalogue, qualifications with levels and expiry, published for manufacturing's station check"},
     "training": {"depends_on": ["skills"], "status": "planned", "what": "courses and completions that grant skills"},
     "payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only", "what": "pay calculation; accounting entries go to Mizan"},
 }

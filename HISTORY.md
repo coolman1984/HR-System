@@ -8,6 +8,39 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-28 — Shifts (phase 3) and skills (phase 5) built; payroll designed, not built
+- **What:** on the owner's order: shifts, working calendars, effective-dated assignments, day changes and swaps, the
+  planned schedule and its comparison with attendance (`hr_core/scheduling.py`); skills and qualifications with levels
+  and expiry (`hr_core/skills.py`); six new registry entities, four rights, data version 2 (built-in profiles gain the
+  rights; a verified `keep-` backup first); eight new screens; `eco.schedule_day.v1` and `eco.qualification.v1`
+  (generated in GMES, copied to `eco_schemas/`); GMES mirrors both with their age and refuses an unqualified person at a
+  station. `TEST_HR_WORKFORCE.py` (50 checks), 8 new planted bugs (70). Payroll: `docs/HR_PAYROLL_DESIGN.md` only.
+- **Why:** the owner asked for shifts, skills and payroll; payroll was kept as design by his choice (asked 2026-09-28),
+  because calculating money on attendance not yet bound to the registry employee would give wrong pay.
+
+### A validator that refuses unknown keywords did its job
+- **Symptom:** the first publication of a planned day failed: `schema keyword(s) not supported by eco_contract.py: ['enum']`.
+- **Cause:** the new contract is the first with an enumerated field; HR's standard-library validator supports a fixed
+  subset of JSON Schema and refuses anything else loudly, by design.
+- **Fix:** `enum` added to the validator (value must be one of the list), with the new contracts validated in the test.
+- **Lesson:** a validator that fails loudly on what it does not know turns a silent half-check into a one-line fix.
+
+### New tables would have broken the rehearsal of every older backup
+- **Symptom:** (found by reasoning before it happened) the backup rehearsal compares the restored tables' fingerprint
+  with the one in the backup's manifest, written by the program that made the backup.
+- **Cause:** the fingerprint covered every entity; six new, empty entities would change it for every backup made before.
+- **Fix:** entities added later are left out of the fingerprint while empty; a test proves an empty installation gives
+  exactly the fingerprint phase 2 computed.
+- **Lesson:** anything stored with a backup must be computed the same way by every later program; extend it only additively.
+
+### The past schedule must not move
+- **Symptom:** (design) changing a shift's times, a calendar's rest days or a started assignment would silently change
+  the plan of days already worked, and with it every comparison with attendance.
+- **Cause:** a plan resolved from current records is only history-safe if those records cannot change backwards.
+- **Fix:** a started assignment only ends (not before yesterday); a day before today is not re-planned; a shift or
+  calendar that people already worked keeps its times and rest days (make a new one); planted bugs for each.
+- **Lesson:** effective dating is a rule on writes, not a filter on reads.
+
 ## 2026-09-28 — Phase 2.6 (UX): the product shell before any new business feature
 - **What:** the owner stopped shifts, skills and payroll until HR-System looks and feels like a commercial HR product.
   The screens (`hr_core/web/app.js`, `hr_core/web/hr.css`) were rebuilt as one application shell on the ecosystem's

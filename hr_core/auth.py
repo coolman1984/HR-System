@@ -39,17 +39,24 @@ PERMISSIONS = {
     "hr.attendance.read": "See attendance, its history and exports",
     "hr.attendance.upload": "Upload attendance files and roll an upload back",
     "admin.settings.manage": "Change this installation's settings (start with Windows, language)",
+    "hr.shifts.read": "See shifts, calendars, assignments and the planned schedule",
+    "hr.shifts.write": "Plan shifts: define them, assign people, change or swap a day",
+    "hr.skills.read": "See skills and who is qualified",
+    "hr.skills.write": "Define skills and record qualifications",
 }
 # Rights added after data version 0: hr_core/upgrade.py gives them to the built-in profiles of older installations.
 ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendance.upload", "admin.settings.manage"],
                            "hr_officer": ["hr.attendance.read", "hr.attendance.upload"], "viewer": ["hr.attendance.read"]}
+ADDED_IN_DATA_VERSION_2 = {"administrator": ["hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"],
+                           "hr_officer": ["hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"],
+                           "viewer": ["hr.shifts.read", "hr.skills.read"], "auditor": ["hr.shifts.read", "hr.skills.read"]}
 ADMIN_PERMS = {p for p in PERMISSIONS if p.startswith("admin.")}
 BUILTIN_PROFILES = {
     "administrator": ("Administrator", sorted(PERMISSIONS)),
     "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run",
-                                 "hr.attendance.read", "hr.attendance.upload"]),
-    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read"]),
-    "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read"]),
+                                 "hr.attendance.read", "hr.attendance.upload", "hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write"]),
+    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read"]),
+    "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read", "hr.shifts.read", "hr.skills.read"]),
 }
 ITERATIONS = 600_000
 MIN_PASSWORD = 8

@@ -131,3 +131,36 @@
 .hr-activity b { font: 600 var(--eco-fs-sm) var(--eco-mono); }
 .hr-dot { flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--eco-accent); }
 @media (max-width: 1100px) { .hr-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hr-dash-grid { grid-template-columns: 1fr; } .hr-door { grid-template-columns: 1fr; } .hr-door-brand { display: none; } }
+
+/* ------------------------------------------------------------------ planning (phase 3) and skills (phase 5) */
+.hr-days { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 0; }
+.hr-roster-host { flex: 1; display: flex; min-height: 0; }
+.hr-roster-host > .eco-grid { flex: 1; }
+.hr-roster .eco-gc.hr-day-cell, .hr-roster .eco-gc { padding: 2px 4px; }
+.hr-week-label { margin-inline-start: 6px; font-family: var(--eco-mono); font-size: var(--eco-fs-sm); }
+.hr-day {
+  --c: var(--eco-accent);
+  display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; width: 100%; height: 30px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  border-inline-start: 3px solid var(--c); border-radius: var(--eco-radius); background: color-mix(in srgb, var(--c) 10%, var(--eco-surface)); color: var(--eco-text);
+  font: 600 var(--eco-fs-sm)/1.1 var(--eco-font); cursor: pointer; text-align: start; position: relative; overflow: hidden;
+}
+.hr-day small { font: 500 10px var(--eco-mono); color: var(--eco-text-2); }
+.hr-day:hover { background: color-mix(in srgb, var(--c) 18%, var(--eco-surface)); }
+.hr-day.is-night { --c: var(--st-hold); }
+.hr-day.is-rest { --c: var(--eco-line-strong); color: var(--eco-text-3); font-weight: 500; }
+.hr-day.is-holiday { --c: var(--st-idle); }
+.hr-day.is-unscheduled { --c: var(--st-down); background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--st-down) 8%, transparent) 6px 12px); color: var(--st-down); }
+.hr-day.is-changed::after { content: ""; position: absolute; top: 3px; inset-inline-end: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--st-rework); }
+.hr-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-inline-start: 10px; font-size: var(--eco-fs-sm); color: var(--eco-text-2); }
+.hr-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hr-legend .hr-day { width: 16px; height: 12px; padding: 0; border-width: 1px 1px 1px 3px; cursor: default; }
+.hr-level { display: inline-flex; align-items: center; gap: 3px; }
+.hr-level i, .hr-q i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--eco-line); }
+.hr-level i.is-on { background: var(--eco-accent); }
+.hr-level span { margin-inline-start: 6px; color: var(--eco-text-2); font-size: var(--eco-fs-sm); }
+.hr-q { --c: var(--eco-line-strong); display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 100%; height: 28px; border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  border-radius: var(--eco-radius); background: color-mix(in srgb, var(--c) 10%, var(--eco-surface)); cursor: pointer; color: var(--eco-text-3); font: inherit; }
+.hr-q i.is-on { background: var(--c); }
+.hr-q.is-valid { --c: var(--eco-ok); } .hr-q.is-expiring { --c: var(--eco-warn); } .hr-q.is-expired { --c: var(--eco-bad); } .hr-q.is-not_yet { --c: var(--eco-info); }
+.hr-q.is-none { background: transparent; border-style: dashed; }
+.hr-q:hover { filter: brightness(.97); border-color: var(--c); }

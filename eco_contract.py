@@ -3,7 +3,7 @@
 Standard library only, on purpose: CHECK_ENVIRONMENT.py treats every non-stdlib import in a
 top-level .py file as a runtime dependency of the application. It supports exactly the keywords
 the generated contract schemas use (type, properties, required, pattern, minLength, maxLength,
-minimum, maximum, exclusiveMinimum, const, format) and FAILS LOUDLY on any other keyword, so a
+minimum, maximum, exclusiveMinimum, const, enum, format) and FAILS LOUDLY on any other keyword, so a
 richer schema can never be half-checked in silence.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "eco_schemas"
 KNOWN = {"$id", "$schema", "title", "type", "properties", "required", "pattern", "minLength", "maxLength",
-         "minimum", "maximum", "exclusiveMinimum", "const", "format", "additionalProperties", "description"}
+         "minimum", "maximum", "exclusiveMinimum", "const", "enum", "format", "additionalProperties", "description"}
 _cache = {}
 
 
@@ -48,6 +48,8 @@ def errors(value, node, path="$"):
     out = []
     if "const" in node and value != node["const"]:
         out.append(f"{path}: must be {node['const']!r}")
+    if "enum" in node and value not in node["enum"]:
+        out.append(f"{path}: must be one of {node['enum']!r}")
     kind = node.get("type")
     if kind and not _type_ok(value, kind):
         return out + [f"{path}: must be {kind}"]

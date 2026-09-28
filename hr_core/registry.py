@@ -22,8 +22,10 @@ import threading
 import uuid
 from datetime import datetime, timezone  # noqa: F401
 
+from . import scheduling, skills
 from .canonical import canonical
 from .journal import SharedConnection, open_journal
+from .scheduling import ScheduleError
 
 
 ORG_TYPES = ("company", "site", "business_unit", "department", "section")
@@ -38,7 +40,17 @@ ENTITIES = {
     "position": ["code", "job_id", "org_unit_id", "reports_to_id", "status", "attrs"],
     "employee": ["code", "legacy_number", "preferred_name", "legal_name", "employment_status", "worker_type", "hire_date",
                  "termination_date", "home_site_id", "position_id", "manager_id"],
+    # phase 3 (hr_core/scheduling.py) and phase 5 (hr_core/skills.py); order = dependency order
+    "shift": ["code", "name", "start_time", "end_time", "break_minutes", "grace_minutes"],
+    "work_calendar": ["code", "name", "rest_days", "holidays"],
+    "shift_assignment": ["code", "employee_id", "shift_id", "calendar_id", "kind", "valid_from", "valid_to", "note"],
+    "roster_override": ["code", "employee_id", "work_date", "shift_id", "reason"],
+    "skill": ["code", "name", "category", "validity_months"],
+    "employee_skill": ["code", "employee_id", "skill_id", "level", "certified_on", "expires_on", "evidence"],
 }
+# Entities added after phase 2: left out of the fingerprint while empty, so backups made before they existed still
+# rehearse to the same fingerprint (an older program's manifest does not know them).
+LATER_ENTITIES = ("shift", "work_calendar", "shift_assignment", "roster_override", "skill", "employee_skill")
 META_COLUMNS = ["id", "ver", "deleted", "deleted_at", "deleted_by", "created_at", "created_by", "updated_at", "updated_by"]
 
 
@@ -58,9 +70,18 @@ def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _today():
+    """Today's date on this computer, the boundary between history and the plan (phase 3 rules). HR_TEST_TODAY
+    moves it for the delivery tests only (with HR_TEST_HOOKS=1)."""
+    if os.environ.get("HR_TEST_HOOKS") == "1" and os.environ.get("HR_TEST_TODAY"):
+        return os.environ["HR_TEST_TODAY"]
+    return datetime.now().date().isoformat()
+
+
 class Registry:
     def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company", journal=None):
         uuid.UUID(company_id)
+        self.today = _today  # replaced by tests to put "today" where a rule needs it
         self.company_id = company_id
         os.makedirs(data_dir, exist_ok=True)
         self.path = os.path.join(data_dir, "hr.db")
@@ -93,14 +114,14 @@ class Registry:
                 ver INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by TEXT,
                 created_at TEXT NOT NULL, created_by TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL);""")
         parts.append("CREATE UNIQUE INDEX IF NOT EXISTS org_unit_code ON org_unit(type, code);")
-        for entity in ("job", "position", "employee"):
+        for entity in ("job", "position", "employee") + LATER_ENTITIES:
             parts.append(f"CREATE UNIQUE INDEX IF NOT EXISTS {entity}_code ON {entity}(code);")
         self.db.executescript("\n".join(parts))
 
     # ------------------------------------------------------------------ identity
     def gid(self, entity, code, org_type=None):
         """Global id shared with every ecosystem app: UUIDv5(company, "hr:<kind>:<code>")."""
-        kind = {"org_unit": f"org_unit:{org_type}", "job": "job", "position": "position", "employee": "employee"}[entity]
+        kind = f"org_unit:{org_type}" if entity == "org_unit" else entity
         return str(uuid.uuid5(uuid.UUID(self.company_id), f"hr:{kind}:{code}"))
 
     # ------------------------------------------------------------------ reads
@@ -264,6 +285,46 @@ class Registry:
                         raise RegistryError("employee.home_site_id", f"employee {row['code']}: home site must be a site")
             if cur and row.get("manager_id") == cur["id"]:
                 raise RegistryError("employee.manager", "an employee cannot be their own manager")
+        elif entity in LATER_ENTITIES:
+            try:
+                self._validate_later(entity, row, cur)
+            except ScheduleError as exc:
+                raise RegistryError(exc.code, str(exc)) from None
+
+    def _live(self, entity, gid, what):
+        ref = self.by_id(entity, gid) if gid else None
+        if not ref or ref["deleted"]:
+            raise RegistryError(f"{entity}.missing", f"{what} does not exist (or is in the Recycle Bin)")
+        return ref
+
+    def _validate_later(self, entity, row, cur):
+        today = self.today()
+        started = lambda col, gid: self.db.execute(  # noqa: E731
+            f"SELECT 1 FROM shift_assignment WHERE {col} = ? AND deleted = 0 AND valid_from < ? LIMIT 1", (gid, today)).fetchone() is not None
+        if entity == "shift":
+            used = cur is not None and (started("shift_id", cur["id"]) or self.db.execute(
+                "SELECT 1 FROM roster_override WHERE shift_id = ? AND deleted = 0 AND work_date < ? LIMIT 1", (cur["id"], today)).fetchone() is not None)
+            scheduling.check_shift(row, cur, used)
+        elif entity == "work_calendar":
+            scheduling.check_calendar(row, cur, cur is not None and started("calendar_id", cur["id"]), today)
+        elif entity == "shift_assignment":
+            self._live("employee", row.get("employee_id"), "the employee")
+            self._live("shift", row.get("shift_id"), "the shift")
+            self._live("work_calendar", row.get("calendar_id"), "the working calendar")
+            others = [dict(r) for r in self.db.execute("SELECT * FROM shift_assignment WHERE employee_id = ? AND deleted = 0 AND id != ?",
+                                                        (row["employee_id"], cur["id"] if cur else ""))]
+            scheduling.check_assignment(row, cur, others, today)
+        elif entity == "roster_override":
+            emp = self._live("employee", row.get("employee_id"), "the employee")
+            if row.get("shift_id"):
+                self._live("shift", row["shift_id"], "the shift")
+            scheduling.check_override(row, cur, emp["code"], today)
+        elif entity == "skill":
+            skills.check_skill(row)
+        elif entity == "employee_skill":
+            emp = self._live("employee", row.get("employee_id"), "the employee")
+            skill = self._live("skill", row.get("skill_id"), "the skill")
+            skills.check_employee_skill(row, emp["code"], skill["code"])
 
     def _check_delete(self, entity, cur):
         checks = {
@@ -271,7 +332,20 @@ class Registry:
             "job": [("position", "job_id", "positions of this job")],
             "position": [("employee", "position_id", "employees holding it"), ("position", "reports_to_id", "positions reporting to it")],
             "employee": [("employee", "manager_id", "employees managed by them")],
+            "shift": [("shift_assignment", "shift_id", "assignments of this shift"), ("roster_override", "shift_id", "day changes to this shift")],
+            "work_calendar": [("shift_assignment", "calendar_id", "assignments using this calendar")],
+            "shift_assignment": [], "roster_override": [],
+            "skill": [("employee_skill", "skill_id", "people qualified for it")],
+            "employee_skill": [],
         }[entity]
+        try:
+            if entity == "shift_assignment":
+                scheduling.check_assignment_delete(cur, self.today())
+            elif entity == "roster_override":
+                emp = self.by_id("employee", cur["employee_id"])
+                scheduling.check_override(cur, cur, emp["code"] if emp else "", self.today(), deleting=True)
+        except ScheduleError as exc:
+            raise RegistryError(exc.code, str(exc)) from None
         for table, col, what in checks:
             n = self.db.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} = ? AND deleted = 0", (cur["id"],)).fetchone()[0]
             if n:
@@ -380,6 +454,7 @@ class Registry:
 
     def fingerprint(self):
         dump = {e: [dict(r, attrs=r["attrs"]) if "attrs" in r else r for r in self.list(e, include_deleted=True)] for e in ENTITIES}
+        dump = {e: rows for e, rows in dump.items() if rows or e not in LATER_ENTITIES}
         return hashlib.sha256(canonical(dump).encode("utf-8")).hexdigest()
 
     def close(self):

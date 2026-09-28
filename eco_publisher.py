@@ -7,6 +7,8 @@ application's behaviour — and turns it into versioned snapshots:
 
   eco.employee.v1        one per employee confirmed by an uploaded employee master
   eco.attendance_day.v1  one per attendance record (the merge key Attendance_ID)
+  eco.schedule_day.v1    one per planned day, today and the next 13, for everyone with a plan (hr_core/scheduling.py)
+  eco.qualification.v1   one per qualification, a withdrawn one as inactive (hr_core/skills.py)
 
 Guarantees:
   * HR works alone. Without ECO_GMES_URL the publisher is disabled and does nothing.
@@ -90,6 +92,48 @@ def registry_employees(registry, company):
     return out
 
 
+WINDOW_DAYS = 14  # planned days published ahead (today included); older days were published when they were ahead
+
+
+def registry_plan_and_skills(registry, company, today=None):
+    """Phase 3 and 5 facts from the registry: the planned days of everyone who has (or had) a plan, from today for
+    WINDOW_DAYS, and every qualification (a withdrawn one is published as inactive, so manufacturing stops accepting it).
+    Only the fields of the contracts leave HR."""
+    from datetime import date, timedelta
+    from hr_core import scheduling
+    out = {}
+    plan = scheduling.Schedule(registry)
+    first = date.fromisoformat(today) if today else date.today()
+    planned = {a for a in plan.assignments} | {e for e, _ in plan.overrides}
+    for emp_id in sorted(planned):
+        emp = plan.employees.get(emp_id)
+        if not emp:
+            continue
+        for n in range(WINDOW_DAYS):
+            d = plan.day(emp_id, (first + timedelta(days=n)).isoformat())
+            key = f"{emp['code']}:{d['work_date']}"
+            body = {"id": hr_id(company, "schedule", key), "employee": {"id": hr_id(company, "employee", emp["code"]), "code": emp["code"]},
+                    "work_date": d["work_date"], "status": d["status"], "paid_minutes": d["paid_minutes"], "origin": {"app": "hr", "type": "schedule", "key": key}}
+            for k in ("shift_code", "start", "end", "source"):
+                if d.get(k):
+                    body[k] = d[k]
+            out[("eco.schedule_day.v1", body["id"])] = body
+    skills = {k["id"]: k for k in registry.list("skill", include_deleted=True)}
+    for q in registry.list("employee_skill", include_deleted=True):
+        emp, skill = registry.by_id("employee", q["employee_id"]), skills.get(q["skill_id"])
+        if not emp or not skill:
+            continue
+        body = {"id": hr_id(company, "qualification", q["code"]), "employee": {"id": hr_id(company, "employee", emp["code"]), "code": emp["code"]},
+                "skill_code": skill["code"], "level": int(q["level"]), "certified_on": q["certified_on"],
+                "active": not q["deleted"] and not skill["deleted"] and not emp["deleted"], "origin": {"app": "hr", "type": "qualification", "key": q["code"]}}
+        if skill.get("name"):
+            body["skill_name"] = skill["name"]
+        if q.get("expires_on"):
+            body["expires_on"] = q["expires_on"]
+        out[("eco.qualification.v1", body["id"])] = body
+    return out
+
+
 def build_snapshots(rows, company, registry=None):
     """HR's current rows -> {(type, id): body without version}. Pure; no I/O.
 
@@ -104,6 +148,7 @@ def build_snapshots(rows, company, registry=None):
     out, problems = {}, []
     if registry is not None and registry.list("employee"):
         out.update(registry_employees(registry, company))
+        out.update(registry_plan_and_skills(registry, company))
         rows_for_employees = []
     else:
         rows_for_employees = rows
