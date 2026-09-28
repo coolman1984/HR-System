@@ -34,6 +34,8 @@ async function api(method, path, body) {
   return data;
 }
 const can = (perm) => !!(S.me && S.me.permissions.includes(perm));
+/** Every screen: the kit's standard screen with the one-line subtitle and the help text of its code (sub.CODE, about.CODE). */
+const screen = (o) => ui.screen({ subtitle: o.code && has("sub." + o.code) ? t("sub." + o.code) : null, help: o.code && has("about." + o.code) ? t("about." + o.code) : null, ...o });
 const value = (v) => (v && has("value." + v) ? t("value." + v) : v);
 const profileName = (code, fallback) => (has("profile." + code) ? t("profile." + code) : fallback || code);
 function fail(e) { ui.toast({ kind: "bad", title: t("failed_title"), text: e.message, timeout: 7000 }); }
@@ -43,7 +45,8 @@ async function boot() {
   ui.configure({ prefix: "hr", product: "hr" });
   S.info = await (await fetch("/api/info")).json();
   await loadLang(ui.prefs.get("lang", S.info.language || "en"));
-  ui.configure({ lang: S.lang, theme: ui.prefs.get("theme", "light"), density: ui.prefs.get("density", "compact") });
+  // the modern look (Mizan's visual language, in the shared kit) is HR's default; a person may switch to the classic one
+  ui.configure({ lang: S.lang, theme: ui.prefs.get("theme", "light"), density: ui.prefs.get("density", "compact"), look: ui.prefs.get("look", "modern") });
   document.title = t("product.name");
   if (S.info.error) return showError();
   if (S.info.setup_needed) return showSetup();
@@ -66,7 +69,16 @@ function door(content, { wide } = {}) {
     ui.segmented({ value: S.lang, options: [["en", "English"], ["ar", "العربية"]], onChange: setLanguage }),
     ui.button({ icon: document.documentElement.dataset.theme === "dark" ? "sun" : "moon", kind: "ghost", title: ui.kitText("theme"),
       onClick: () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark") }));
-  document.body.replaceChildren(h("div", { class: "hr-door" }, brand, h("main", { class: "hr-door-main" }, tools, h("div", { class: ["hr-door-card", wide && "is-wide"] }, content))));
+  document.body.replaceChildren(h("div", { class: "hr-door" }, brand, h("main", { class: "hr-door-main" }, decorLines(), tools, h("div", { class: ["hr-door-card", wide && "is-wide"] }, content))));
+}
+/** Coloured rails with rounded corners and node dots around the sign-in card (Mizan's front door; shown in the modern look). */
+function decorLines() {
+  const NS = "http://www.w3.org/2000/svg", el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+  const svg = el("svg", { class: "hr-decor", viewBox: "0 0 900 800", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" });
+  [["#a78bfa", "M -20 70 H 120 Q 140 70 140 90 V 250", [140, 250]], ["#2dd4bf", "M -20 360 H 60 Q 80 360 80 380 V 470 Q 80 490 100 490 H 210", [210, 490]],
+    ["#f59e0b", "M 920 120 H 800 Q 780 120 780 140 V 300", [780, 300]], ["#ec4899", "M 920 520 H 860 Q 840 520 840 540 V 660 Q 840 680 820 680 H 700", [700, 680]],
+    ["#3b82f6", "M 690 -20 V 40 Q 690 60 710 60 H 920", [690, 40]]].forEach(([c, d, [x, y]]) => { svg.append(el("path", { d, stroke: c }), el("circle", { cx: x, cy: y, r: "4.5", fill: c })); });
+  return svg;
 }
 function showError() {
   door(h("div", {}, h("div", { class: "hr-door-icon is-bad" }, ui.icon("x-octagon", 26)), h("h2", { text: t("error.title") }),
@@ -288,7 +300,10 @@ function employeesScreen({ shell }) {
     { key: "legal_name", label: t("field.legal_name"), width: 180, hidden: true },
     { key: "termination_date", label: t("field.termination_date"), type: "date", width: 100, hidden: true },
     { key: "updated_at", label: t("rec.updated"), type: "date", width: 140, value: (r) => (r.updated_at || "").slice(0, 16).replace("T", " ") },
-  ], { rowKey: "id", selection: "multi", totals: true, layoutKey: "EMP1010", emptyText: t("emp.empty"), onSelect: (sel) => { draw(sel); buttons(sel); }, onOpen: (r) => !r.deleted && can("hr.employees.write") && edit(r) });
+  ], { rowKey: "id", selection: "multi", totals: true, layoutKey: "EMP1010", emptyText: t("emp.empty"), onSelect: (sel) => { draw(sel); buttons(sel); }, onOpen: (r) => !r.deleted && can("hr.employees.write") && edit(r),
+    presets: [{ id: "active", label: value("Active"), test: (r) => r.employment_status === "Active" }, { id: "leave", label: value("Leave"), test: (r) => r.employment_status === "Leave" },
+      { id: "unplaced", label: t("preset.no_position"), test: (r) => !r.position_id && r.employment_status !== "Terminated" },
+      { id: "new", label: t("preset.hired_this_year"), test: (r) => (r.hire_date || "").slice(0, 4) === localToday().slice(0, 4) }] });
 
   const act = {
     add: ui.button({ label: t("new.employee"), icon: "user-plus", kind: "primary", disabled: !can("hr.employees.write"), onClick: () => editRecord("employee", null).then((ok) => ok && load()) }),
@@ -304,8 +319,9 @@ function employeesScreen({ shell }) {
     act.bin.hidden = bin;
   }
   const edit = (r) => editRecord("employee", r).then((ok) => ok && load());
-  const sc = ui.screen({ code: "EMP1010", title: t("nav.employees"), path: [t("g.people")], shell, toolbar: [act.add, act.edit, act.bin, act.restore],
-    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("employees"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+  const sc = screen({ code: "EMP1010", title: t("nav.employees"), path: [t("g.people")], shell, toolbar: [act.add, act.edit, act.bin, act.restore],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("employees"), exportLabel: t("export"), columns: () => g.columnsDialog(),
+      print: () => print(), printLabel: t("print") },
     conditions: conds, grid: g, detail, detailKey: "EMP1010:detail" });
   function draw(sel) {
     if (!sel.length) { ui.clear(detail, ui.empty({ icon: "user", title: t("emp.none"), text: t("emp.none_help") })); return; }
@@ -407,7 +423,7 @@ function structureScreen({ shell }) {
     edit: ui.button({ label: t("edit"), icon: "edit", onClick: () => editRecord("org_unit", current).then((ok) => ok && load()) }),
     bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", onClick: () => binRecords("org_unit", [current]).then((ok) => { if (ok) { current = null; load(); } }) }),
   };
-  const sc = ui.screen({ code: "ORG1010", title: t("nav.structure"), path: [t("g.organisation")], shell, toolbar: [act.add, act.edit, act.bin],
+  const sc = screen({ code: "ORG1010", title: t("nav.structure"), path: [t("g.organisation")], shell, toolbar: [act.add, act.edit, act.bin],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", print: () => print(), printLabel: t("print") },
     body: ui.split(side, record, { key: "ORG1010:side", initial: 320, min: 220, second: false }) });
   async function load() {
@@ -433,7 +449,7 @@ function registerScreen(entity, code, titleKey, columns, opts = {}) {
       edit: ui.button({ label: t("edit"), icon: "edit", disabled: true, onClick: () => editRecord(entity, g.selected()[0]).then((ok) => ok && load()) }),
       bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords(entity, g.selected()).then((ok) => ok && load()) }),
     };
-    const sc = ui.screen({ code, title: t(titleKey), path: [t(o.group)], shell, toolbar: [act.add, act.edit, act.bin],
+    const sc = screen({ code, title: t(titleKey), path: [t(o.group)], shell, toolbar: [act.add, act.edit, act.bin],
       standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV(entity), exportLabel: t("export"), columns: () => g.columnsDialog() }, grid: g, detail, detailKey: code + ":detail" });
     function drawDetail(r) {
       if (!r) { ui.clear(detail, ui.empty({ icon: o.icon || (entity === "job" ? "briefcase" : "id-card"), title: t("pick.one") })); return; }
@@ -504,6 +520,7 @@ function assignmentsScreen({ shell }) {
     { key: "valid_from", label: t("field.valid_from"), type: "date", width: 110 }, { key: "valid_to", label: t("field.valid_to"), type: "date", width: 110 },
     { key: "note", label: t("field.note"), width: 200 }, { key: "code", label: t("field.code"), type: "code", width: 170, hidden: true },
   ], { rowKey: "id", selection: "single", layoutKey: "SHF2010", totals: false, emptyText: t("asg.empty"), rowStatus: (r) => (stateOf(r) === "current" ? "run" : null),
+    presets: [{ id: "temp", label: value("temporary"), test: (r) => r.kind === "temporary" }, { id: "ending", label: t("preset.ending_soon"), test: (r) => !!r.valid_to && r.valid_to >= today && r.valid_to <= addDays(today, 14) }],
     onSelect: (sel) => { const a = sel[0]; act.edit.disabled = !a || !can("hr.shifts.write") || stateOf(a) === "ended"; act.bin.disabled = !a || a.valid_from < today || !can("hr.employees.delete"); },
     onOpen: (r) => can("hr.shifts.write") && editRecord("shift_assignment", r).then((ok) => ok && load()) });
   const act = {
@@ -511,7 +528,7 @@ function assignmentsScreen({ shell }) {
     edit: ui.button({ label: t("asg.edit_or_end"), icon: "edit", disabled: true, onClick: () => editRecord("shift_assignment", g.selected()[0]).then((ok) => ok && load()) }),
     bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords("shift_assignment", g.selected()).then((ok) => ok && load()) }),
   };
-  const sc = ui.screen({ code: "SHF2010", title: t("nav.assignments"), path: [t("g.planning")], shell, toolbar: [act.add, act.edit, act.bin],
+  const sc = screen({ code: "SHF2010", title: t("nav.assignments"), path: [t("g.planning")], shell, toolbar: [act.add, act.edit, act.bin],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("assignments"), exportLabel: t("export"), columns: () => g.columnsDialog() },
     conditions: conds, grid: g, note: h("div", { class: "hr-pad" }, ui.banner("info", t("asg.rule"))) });
   async function load() {
@@ -558,7 +575,7 @@ function rosterScreen({ shell }) {
   const host = h("div", { class: "hr-roster-host" });
   const legend = h("div", { class: "hr-legend" }, [["is-work", "plan.work"], ["is-night", "plan.night"], ["is-rest", "plan.rest"], ["is-holiday", "plan.holiday"], ["is-unscheduled", "plan.unscheduled"], ["is-changed", "plan.changed"]]
     .map(([c, k]) => h("span", {}, h("i", { class: "hr-day " + c }), t(k))));
-  const sc = ui.screen({ code: "SHF3010", title: t("nav.roster"), path: [t("g.planning")], shell,
+  const sc = screen({ code: "SHF3010", title: t("nav.roster"), path: [t("g.planning")], shell,
     toolbar: [ui.button({ label: t("plan.swap"), icon: "rotate", disabled: !can("hr.shifts.write"), onClick: () => swapDialog() }), legend],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g && g.exportCSV("roster-" + start), exportLabel: t("export"), print: () => print(), printLabel: t("print") },
     conditions: conds, body: host });
@@ -638,7 +655,7 @@ function compareScreen({ shell }) {
     { key: "attendance_status", label: t("cmp.attended"), width: 120 }, { key: "worked_minutes", label: t("cmp.worked"), type: "number", width: 110 },
     { key: "paid_minutes", label: t("cmp.planned_minutes"), type: "number", width: 120 },
   ], { rowKey: "key", selection: "single", totals: false, layoutKey: "SHF3020", emptyText: t("cmp.empty"), idleText: t("hint.inquiry"), rowStatus: (r) => (r.verdict === "absent" ? "down" : r.verdict === "as_planned" ? "run" : null) });
-  const sc = ui.screen({ code: "SHF3020", title: t("nav.compare"), path: [t("g.planning")], shell,
+  const sc = screen({ code: "SHF3020", title: t("nav.compare"), path: [t("g.planning")], shell,
     standard: { inquiry: () => load(), inquiryLabel: t("inquiry"), reset: () => conds.reset(), resetLabel: t("reset"), export: () => g.exportCSV("planned-vs-attended"), exportLabel: t("export"), columns: () => g.columnsDialog() },
     conditions: conds, grid: g, note: counts });
   async function load() {
@@ -682,6 +699,7 @@ function qualificationsScreen({ shell }) {
     { key: "certified_on", label: t("field.certified_on"), type: "date", width: 110 }, { key: "expires_on", label: t("field.expires_on"), type: "date", width: 110 },
     { key: "evidence", label: t("field.evidence"), width: 200 },
   ], { rowKey: "id", selection: "single", layoutKey: "SKL2010", emptyText: t("qual.empty"), rowStatus: (r) => (qState(r, today) === "expired" ? "down" : null),
+    presets: ["expiring", "expired"].map((k) => ({ id: k, label: t("qual." + k), test: (r) => qState(r, today) === k })),
     onSelect: (sel) => { act.edit.disabled = !sel.length || !can("hr.skills.write"); act.bin.disabled = !sel.length || !can("hr.employees.delete"); },
     onOpen: (r) => can("hr.skills.write") && editRecord("employee_skill", r).then((ok) => ok && load()) });
   const act = {
@@ -689,7 +707,7 @@ function qualificationsScreen({ shell }) {
     edit: ui.button({ label: t("qual.recertify"), icon: "refresh", disabled: true, onClick: () => editRecord("employee_skill", g.selected()[0]).then((ok) => ok && load()) }),
     bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords("employee_skill", g.selected()).then((ok) => ok && load()) }),
   };
-  const sc = ui.screen({ code: "SKL2010", title: t("nav.qualifications"), path: [t("g.skills")], shell, toolbar: [act.add, act.edit, act.bin],
+  const sc = screen({ code: "SKL2010", title: t("nav.qualifications"), path: [t("g.skills")], shell, toolbar: [act.add, act.edit, act.bin],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("qualifications"), exportLabel: t("export"), columns: () => g.columnsDialog() },
     conditions: conds, grid: g });
   async function load() {
@@ -713,7 +731,7 @@ function matrixScreen({ shell }) {
   const conds = ui.conditionPanel([{ key: "text", label: t("find.person"), placeholder: t("find.person_ph") }, { key: "unit", label: t("field.org_unit_id"), type: "select", options: [], placeholder: t("all") },
     { key: "category", label: t("field.category"), placeholder: t("all") }], { key: "SKL3010", onSubmit: () => load() });
   const legend = h("div", { class: "hr-legend" }, Object.keys(QSTATE).map((k) => h("span", {}, ui.statusChip(QSTATE[k], t("qual." + k)))));
-  const sc = ui.screen({ code: "SKL3010", title: t("nav.matrix"), path: [t("g.skills")], shell, toolbar: [legend],
+  const sc = screen({ code: "SKL3010", title: t("nav.matrix"), path: [t("g.skills")], shell, toolbar: [legend],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", print: () => print(), printLabel: t("print") }, conditions: conds, body: host });
   async function load() {
     try {
@@ -748,7 +766,7 @@ function matrixScreen({ shell }) {
 // ------------------------------------------------------------------ Attendance (the migrated application, behind the same sign-in)
 function attendanceScreen({ shell }) {
   const note = h("div");
-  const sc = ui.screen({ code: "ATT2010", title: t("nav.attendance"), path: [t("g.people")], shell,
+  const sc = screen({ code: "ATT2010", title: t("nav.attendance"), path: [t("g.people")], shell,
     toolbar: [ui.button({ label: t("att.open_new"), icon: "expand", onClick: () => window.open("/attendance", "_blank", "noopener") })],
     standard: { inquiry: () => { frame.src = "/attendance"; }, inquiryLabel: t("refresh"), inquiryIcon: "refresh" },
     body: h("div", { class: "hr-attendance" }, note, h("iframe", { class: "hr-attendance-frame", src: "/attendance", title: t("nav.attendance") })) });
@@ -772,7 +790,7 @@ function usersScreen({ shell }) {
     { key: "must_change", label: t("user.must_change"), width: 150, value: (r) => (r.must_change ? t("yes") : t("no")) },
     { key: "updated_at", label: t("rec.updated"), type: "date", width: 140, value: (r) => (r.updated_at || "").slice(0, 16).replace("T", " ") },
   ], { rowKey: "code", selection: "single", layoutKey: "SEC9010", onSelect: (sel) => draw(sel[0]) });
-  const sc = ui.screen({ code: "SEC9010", title: t("nav.users"), path: [t("g.security")], shell,
+  const sc = screen({ code: "SEC9010", title: t("nav.users"), path: [t("g.security")], shell,
     toolbar: [ui.button({ label: t("user.new"), icon: "user-plus", kind: "primary", onClick: () => create() })],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("users"), exportLabel: t("export") },
     conditions: conds, grid: g, detail, detailKey: "SEC9010:detail" });
@@ -790,6 +808,7 @@ function usersScreen({ shell }) {
           try { await api("PATCH", "/api/admin/users/" + encodeURIComponent(u.code), { fields: { profile: prof.value, active: active.querySelector("input").checked ? 1 : 0 }, expected_ver: u.ver }); ui.toast({ kind: "ok", title: t("saved"), text: u.code }); load(u.code); }
           catch (e) { fail(e); }
         } }), ui.button({ label: t("user.reset_password"), icon: "key", onClick: () => resetPw(u) })))),
+      u.profile !== "administrator" && sodConflicts(perms).length ? h("div", { class: "hr-pad" }, ui.banner("warn", sodConflicts(perms).map(([a, b]) => t("perm." + a) + " + " + t("perm." + b)).join(" · "), { title: t("sod.title") })) : null,
       ui.section(t("user.rights", { n: perms.length }), h("div", { class: "hr-perm-list" }, perms.map((p) => h("span", { class: "hr-perm" }, ui.icon("check", 12), h("span", { text: t("perm." + p) }))))));
   }
   async function resetPw(u) {
@@ -826,37 +845,196 @@ function usersScreen({ shell }) {
   load();
   return { el: sc.el };
 }
-const PERM_GROUPS = [["perm_group.people", ["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
+// ------------------------------------------------------------------ rights: segregation of duties and role templates (ideas from Mizan)
+// Two rights one person should not hold together (the administrator profile is exempt: it holds every right by rule).
+const SOD = [["admin.users.manage", "hr.employees.write"], ["hr.employees.delete", "admin.backup.restore"]];
+const sodConflicts = (perms) => SOD.filter(([a, b]) => perms.includes(a) && perms.includes(b));
+const READS = ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read"];
+// starting points for a new profile or for resetting one; the person still ticks and saves (no hidden rights)
+const TEMPLATES = {
+  viewer: READS,
+  hr_clerk: [...READS, "hr.employees.write", "hr.attendance.upload", "hr.import.run"],
+  planner: [...READS, "hr.shifts.write"],
+  skills_coordinator: [...READS, "hr.skills.write"],
+  auditor: [...READS, "admin.audit.read", "admin.system.read"],
+  it_admin: ["hr.org.read", "admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage", "admin.backup.manage"],
+};
+// the matrix: one row per object, one cell per action (Mizan's role editor)
+const PERM_ACTIONS = ["read", "write", "delete", "upload", "restore", "run", "manage"];
+const permSplit = (p) => { const i = p.lastIndexOf("."); return { object: p.slice(0, i), action: p.slice(i + 1) }; };
+
+// ------------------------------------------------------------------ the Advisor: daily checks with the reason and what to do (Mizan's advisor, for people)
+// Computed in the browser from what the person may already read: it never shows a record the person could not open.
+async function advisorFindings() {
+  const R = await refs(true), today = localToday(), out = [];
+  const opt = (perm, path) => (can(perm) ? api("GET", path).catch(() => null) : Promise.resolve(null));
+  const [asg, quals, hh, users, profs, st] = await Promise.all([opt("hr.shifts.read", "/api/shift_assignment"), opt("hr.skills.read", "/api/employee_skill"), opt("admin.system.read", "/api/admin/health"),
+    opt("admin.users.manage", "/api/admin/users"), opt("admin.users.manage", "/api/admin/profiles"), opt("admin.settings.manage", "/api/admin/settings")]);
+  const who = (e) => (e ? e.code + " · " + (e.preferred_name || "") : "");
+  const person = (e, sub) => ({ label: who(e), sub, screen: "EMP1010" });
+  const add = (id, severity, area, items, vars = {}, screen) => { if (items === true || (items && items.length)) out.push({ id, severity, area, items: items === true ? [] : items, vars: { n: items === true ? 0 : items.length, ...vars }, screen }); };
+  const staff = R.employees.filter((e) => e.employment_status !== "Terminated");
+  // people
+  const holders = new Map();
+  staff.forEach((e) => { if (e.position_id) holders.set(e.position_id, (holders.get(e.position_id) || []).concat([e])); });
+  add("position_shared", "error", "people", [...holders.entries()].filter(([, es]) => es.length > 1).flatMap(([p, es]) => es.map((e) => person(e, (R.byId.get(p) || {}).code))), {}, "EMP1010");
+  add("unplaced", "warning", "people", staff.filter((e) => !e.position_id).map((e) => person(e, value(e.employment_status))), {}, "EMP1010");
+  add("no_hire_date", "warning", "people", staff.filter((e) => !e.hire_date).map((e) => person(e)), {}, "EMP1010");
+  add("left_not_closed", "error", "people", staff.filter((e) => e.termination_date && e.termination_date < today).map((e) => person(e, e.termination_date)), {}, "EMP1010");
+  add("terminated_no_date", "warning", "people", R.employees.filter((e) => e.employment_status === "Terminated" && !e.termination_date).map((e) => person(e)), {}, "EMP1010");
+  add("manager_gone", "warning", "people", staff.filter((e) => { const m = R.byId.get(e.manager_id); return e.manager_id && (!m || m.employment_status === "Terminated"); }).map((e) => person(e)), {}, "EMP1010");
+  // organisation
+  add("vacant_positions", "tip", "organisation", R.positions.filter((p) => !holders.has(p.id)).map((p) => ({ label: p.code + " · " + R.name(R.byId.get(p.job_id)), sub: R.name(R.byId.get(p.org_unit_id)), screen: "ORG1030" })), {}, "ORG1030");
+  add("empty_units", "tip", "organisation", R.units.filter((u) => (u.type === "department" || u.type === "section") && !R.positions.some((p) => p.org_unit_id === u.id) && !R.units.some((x) => x.parent_id === u.id))
+    .map((u) => ({ label: u.code + " · " + (u.name || ""), sub: value(u.type), screen: "ORG1010" })), {}, "ORG1010");
+  // planning
+  if (asg) {
+    const live = asg.filter((a) => a.valid_from <= today && (!a.valid_to || a.valid_to >= today));
+    add("terminated_planned", "error", "planning", live.filter((a) => (R.byId.get(a.employee_id) || {}).employment_status === "Terminated").map((a) => person(R.byId.get(a.employee_id), a.code)), {}, "SHF2010");
+    if (asg.length) add("not_planned", "warning", "planning", staff.filter((e) => e.employment_status === "Active" && !live.some((a) => a.employee_id === e.id && a.kind === "regular")).map((e) => person(e)), {}, "SHF2010");
+    add("ending_soon", "tip", "planning", asg.filter((a) => a.valid_to && a.valid_to >= today && a.valid_to <= addDays(today, 14)).map((a) => person(R.byId.get(a.employee_id), a.valid_to)), { days: 14 }, "SHF2010");
+  }
+  // skills
+  if (quals) {
+    const active = (q) => (R.byId.get(q.employee_id) || {}).employment_status === "Active";
+    const qItem = (q) => ({ label: who(R.byId.get(q.employee_id)), sub: R.label(R.byId.get(q.skill_id)) + " · " + (q.expires_on || ""), screen: "SKL2010" });
+    add("qual_expired", "error", "skills", quals.filter((q) => active(q) && qState(q, today) === "expired").map(qItem), {}, "SKL2010");
+    add("qual_expiring", "warning", "skills", quals.filter((q) => active(q) && qState(q, today) === "expiring").map(qItem), { days: 30 }, "SKL2010");
+  }
+  // security
+  if (users && profs) {
+    const byProf = new Map(profs.map((p) => [p.code, p]));
+    const risky = users.filter((u) => u.active && u.profile !== "administrator" && sodConflicts([...((byProf.get(u.profile) || {}).perms || []), ...(u.extra_perms || [])]).length);
+    add("sod", "error", "security", risky.map((u) => ({ label: u.code + " · " + (u.display_name || ""), sub: profileName(u.profile), screen: "SEC9010" })), {}, "SEC9020");
+    const admins = users.filter((u) => u.active && u.profile === "administrator");
+    if (admins.length === 1) add("one_admin", "tip", "security", admins.map((u) => ({ label: u.code + " · " + (u.display_name || ""), screen: "SEC9010" })), {}, "SEC9010");
+    add("must_change", "tip", "security", users.filter((u) => u.active && u.must_change).map((u) => ({ label: u.code + " · " + (u.display_name || ""), screen: "SEC9010" })), {}, "SEC9010");
+  }
+  // system
+  if (hh) {
+    if (!hh.journal.ok || !hh.audit.ok) add("chain_broken", "error", "system", true, {}, "SYS9100");
+    const last = hh.last_backup, hours = st ? st.backup_hours : 24;
+    if (!last) add("no_backup", "error", "system", true, {}, "SYS9070");
+    else if (last.rehearsal && !last.rehearsal.ok) add("backup_failed", "error", "system", [{ label: last.name, sub: (last.created_at || "").slice(0, 16).replace("T", " "), screen: "SYS9070" }], {}, "SYS9070");
+    else if ((Date.now() - new Date(last.created_at).getTime()) / 36e5 > Math.max(2 * hours, 26)) add("backup_old", "warning", "system", [{ label: last.name, sub: (last.created_at || "").slice(0, 16).replace("T", " "), screen: "SYS9070" }], { hours }, "SYS9070");
+    if (hh.recovery && !hh.recovery.intact) add("recovery_damaged", "error", "system", true, {}, "SYS9100");
+    else if (!hh.recovery) add("recovery_missing", "tip", "system", true, {}, "SYS9100");
+  }
+  if ((S.info.company || {}).provisional) add("company_provisional", "tip", "system", true, {}, "SYS9060");
+  const rank = { error: 0, warning: 1, tip: 2 };
+  return out.sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+const ADV_AREAS = ["people", "organisation", "planning", "skills", "security", "system"];
+function adviceCard(f, shell) {
+  const words = (part) => (has("adv." + f.id + "." + part) ? t("adv." + f.id + "." + part, f.vars) : null);
+  return ui.advice({ severity: f.severity, title: words("title"), tags: [t("adv.area." + f.area)], body: words("body"), fix: words("fix"), basis: words("basis"),
+    items: f.items.map((it) => ({ label: it.label, sub: it.sub, onClick: it.screen && shell.screens[it.screen] ? () => shell.open(it.screen) : null })),
+    action: f.screen && shell.screens[f.screen] ? { label: t("adv.open", { screen: shell.screens[f.screen].title }), onClick: () => shell.open(f.screen) } : null });
+}
+function advisorScreen({ shell }) {
+  const body = h("div", { class: "hr-page hr-advisor" });
+  let area = "all", found = [];
+  const sc = screen({ code: "ADV1010", title: t("nav.advisor"), path: [t("g.people")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", print: () => print(), printLabel: t("print") }, body });
+  function draw() {
+    const count = (s) => found.filter((f) => f.severity === s).length;
+    const list = found.filter((f) => area === "all" || f.area === area);
+    const areas = ui.segmented({ value: area, options: [["all", ui.kitText("all") + " · " + found.length]].concat(ADV_AREAS.filter((a) => found.some((f) => f.area === a)).map((a) => [a, t("adv.area." + a) + " · " + found.filter((f) => f.area === a).length])),
+      onChange: (v) => { area = v; draw(); } });
+    ui.clear(body,
+      h("div", { class: "hr-kpis hr-kpis-3" }, [["error", "x-octagon", "bad"], ["warning", "alert", "warn"], ["tip", "lightbulb", "info"]].map(([s, ic, st]) =>
+        ui.kpi({ label: t("adv.count." + s), value: String(count(s)), icon: ic, status: count(s) ? st : "ok" }))),
+      found.length ? areas : null,
+      list.length ? h("div", { class: "hr-stack" }, list.map((f) => adviceCard(f, shell)))
+        : ui.card({ body: h("div", { class: "hr-row hr-allclear" }, ui.icon("shield", 28, "hr-ok"), h("div", {}, h("strong", { text: ui.kitText("all_clear") }), h("p", { class: "eco-muted", text: t("adv.all_clear_text") }))) }),
+      h("p", { class: "eco-muted hr-small", text: t("adv.disclaimer") }));
+  }
+  async function load() {
+    ui.clear(body, h("div", { class: "hr-loading" }, h("span", { class: "eco-spinner" })));
+    try { found = await advisorFindings(); draw(); } catch (e) { ui.clear(body, ui.banner("bad", e.message)); }
+  }
+  load();
+  return { el: sc.el, onActivate: () => { if (S.refs === null) load(); } };
+}
+
+const PERM_GROUPS = [["perm_group.people",["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
   ["perm_group.organisation", ["hr.org.read", "hr.org.write"]], ["perm_group.attendance", ["hr.attendance.read", "hr.attendance.upload"]],
   ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]],
     ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
 function profilesScreen({ shell }) {
-  let profiles = [], current = null;
+  let profiles = [], users = [], current = null, work = null;
   const list = h("div", { class: "hr-plist" }), matrix = h("div", { class: "hr-matrix" });
-  const sc = ui.screen({ code: "SEC9020", title: t("nav.profiles"), path: [t("g.security")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh" },
-    body: ui.split(h("div", { class: "hr-side" }, h("div", { class: "hr-side-head" }, h("strong", { text: t("profile.title") })), list), matrix, { key: "SEC9020:side", initial: 260, min: 200, second: false }) });
+  const sc = screen({ code: "SEC9020", title: t("nav.profiles"), path: [t("g.security")], shell,
+    toolbar: [ui.button({ label: t("prof.new"), icon: "plus", kind: "primary", onClick: () => create() })],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh" },
+    body: ui.split(h("div", { class: "hr-side" }, h("div", { class: "hr-side-head" }, h("strong", { text: t("profile.title") })), list), matrix, { key: "SEC9020:side", initial: 280, min: 220, second: false }) });
+  const known = new Set(PERM_GROUPS.flatMap(([, ps]) => ps));
+  const usersOf = (code) => users.filter((u) => u.profile === code && u.active);
   function draw() {
-    ui.clear(list, profiles.map((p) => h("button", { type: "button", class: ["hr-plist-item", current && current.code === p.code && "is-on"], onclick: () => { current = p; draw(); } },
-      h("span", { class: "hr-plist-icon" }, ui.icon(p.code === "administrator" ? "shield" : "users", 16)), h("div", {}, h("b", { text: profileName(p.code, p.name) }), h("small", { class: "eco-muted", text: t("user.rights", { n: p.perms.length }) })))));
+    ui.clear(list, profiles.map((p) => {
+      const risk = p.code !== "administrator" && sodConflicts(p.perms).length;
+      return h("button", { type: "button", class: ["hr-plist-item", current && current.code === p.code && "is-on"], onclick: () => { current = p; work = null; draw(); } },
+        h("span", { class: "hr-plist-icon" }, ui.icon(p.code === "administrator" ? "shield" : "users", 16)),
+        h("div", {}, h("b", { text: profileName(p.code, p.name) }), h("small", { class: "eco-muted", text: t("user.rights", { n: p.perms.length }) + " · " + t("prof.users_n", { n: usersOf(p.code).length }) })),
+        risk ? ui.icon("alert", 15, "hr-warn") : null);
+    }));
     if (!current) { ui.clear(matrix, ui.empty({ icon: "shield", title: t("pick.one") })); return; }
     const locked = current.code === "administrator";
-    const boxes = {};
-    ui.clear(matrix, h("div", { class: "hr-record-head" }, h("span", { class: "hr-record-icon" }, ui.icon("shield", 20)), h("div", { class: "hr-record-titles" }, h("div", { class: "eco-muted" }, ui.ltr(current.code)), h("h2", { text: profileName(current.code, current.name) })),
-      locked ? null : ui.button({ label: t("save"), icon: "save", kind: "primary", onClick: async () => {
-        const perms = Object.entries(boxes).filter(([, c]) => c.checked).map(([p]) => p);
-        try { await api("PUT", "/api/admin/profiles/" + current.code, { name: current.name, perms, expected_ver: current.ver }); ui.toast({ kind: "ok", title: t("saved"), text: profileName(current.code, current.name) }); load(current.code); }
-        catch (e) { fail(e); }
-      } })),
-    locked ? h("div", { class: "hr-pad" }, ui.banner("info", t("profile.admin_locked"))) : null,
-    h("div", { class: "hr-perm-grid" }, PERM_GROUPS.map(([gk, perms]) => h("section", { class: "hr-perm-group" }, h("h3", { text: t(gk) }), perms.map((p) => {
-      const c = h("input", { type: "checkbox", class: "eco-check", checked: current.perms.includes(p), disabled: locked });
-      boxes[p] = c;
-      return h("label", { class: "hr-perm-row" }, c, h("div", {}, h("span", { text: t("perm." + p) }), h("small", { class: "eco-muted" }, ui.ltr(p))));
-    })))));
+    work = work || new Set(current.perms);
+    const conflicts = locked ? [] : sodConflicts([...work]);
+    const dirty = [...work].sort().join() !== [...current.perms].sort().join();
+    const toggle = (p) => { if (locked) return; work.has(p) ? work.delete(p) : work.add(p); draw(); };
+    // Mizan's role editor: one section per area, one row per object, one pill per action
+    const sections = PERM_GROUPS.map(([gk, perms]) => {
+      const objects = [...new Set(perms.map((p) => permSplit(p).object))];
+      const on = perms.filter((p) => work.has(p)).length;
+      return h("section", { class: ["hr-pm-section", !on && "is-off"] },
+        h("header", {}, h("strong", { text: t(gk) }), h("span", { class: "eco-count", text: on + " / " + perms.length }), h("span", { class: "eco-grow" }),
+          locked ? null : ui.button({ label: on === perms.length ? t("prof.none") : t("prof.all"), kind: "ghost", size: "sm", onClick: () => { perms.forEach((p) => (on === perms.length ? work.delete(p) : work.add(p))); draw(); } })),
+        h("table", {}, h("tbody", {}, objects.map((obj) => h("tr", {}, h("th", {}, h("span", { text: t("perm_obj." + obj) }), h("small", { class: "eco-muted" }, ui.ltr(obj))),
+          h("td", {}, h("div", { class: "hr-pm-cells" }, perms.filter((p) => permSplit(p).object === obj).sort((a, b) => PERM_ACTIONS.indexOf(permSplit(a).action) - PERM_ACTIONS.indexOf(permSplit(b).action)).map((p) =>
+            h("button", { type: "button", class: ["hr-pm-cell", work.has(p) && "is-on"], role: "checkbox", "aria-checked": String(work.has(p)), disabled: locked, title: t("perm." + p), onclick: () => toggle(p) },
+              ui.icon(work.has(p) ? "check" : "plus", 13), h("span", { text: t("perm_act." + permSplit(p).action) }))))))))));
+    });
+    const people = usersOf(current.code);
+    ui.clear(matrix,
+      h("div", { class: "hr-record-head" }, h("span", { class: "hr-record-icon" }, ui.icon("shield", 20)),
+        h("div", { class: "hr-record-titles" }, h("div", { class: "eco-muted" }, ui.ltr(current.code), current.builtin ? " · " + t("prof.builtin") : ""), h("h2", { text: profileName(current.code, current.name) })),
+        locked ? null : ui.button({ label: t("prof.template"), icon: "copy", onClick: (ev) => ui.menu(ev.currentTarget, [{ header: t("prof.template_hint") }].concat(Object.keys(TEMPLATES).map((k) => ({ label: t("template." + k), icon: "users",
+          onSelect: () => { work = new Set(TEMPLATES[k]); draw(); } })))) }),
+        locked ? null : ui.button({ label: t("reset"), icon: "x", disabled: !dirty, onClick: () => { work = null; draw(); } }),
+        locked ? null : ui.button({ label: t("save"), icon: "save", kind: "primary", disabled: !dirty, onClick: async () => {
+          try { await api("PUT", "/api/admin/profiles/" + current.code, { name: current.name, perms: [...work], expected_ver: current.ver }); ui.toast({ kind: "ok", title: t("saved"), text: profileName(current.code, current.name) }); work = null; load(current.code); }
+          catch (e) { fail(e); }
+        } })),
+      locked ? h("div", { class: "hr-pad" }, ui.banner("info", t("profile.admin_locked"))) : null,
+      conflicts.length ? h("div", { class: "hr-pad" }, ui.banner("warn", conflicts.map(([a, b]) => t("perm." + a) + " + " + t("perm." + b)).join(" · "), { title: t("sod.title") }),
+        h("p", { class: "eco-muted hr-small", text: t("sod.why") })) : null,
+      dirty ? h("div", { class: "hr-pad" }, ui.banner("info", t("prof.unsaved"))) : null,
+      h("div", { class: "hr-pm" }, sections),
+      ui.section(t("prof.people", { n: people.length }), people.length ? h("div", { class: "hr-people" }, people.map((u) => h("span", { class: "hr-person" }, ui.avatar(u.display_name || u.code, 20), h("span", { text: u.display_name || u.code }))))
+        : h("span", { class: "eco-muted", text: t("none") })),
+      [...work].some((p) => !known.has(p)) ? h("div", { class: "hr-pad" }, ui.banner("info", t("prof.other_rights"))) : null);
+  }
+  function create() {
+    const code = ui.input({ dir: "ltr", placeholder: "planner_day" }), name = ui.input(), from = ui.select({ options: Object.keys(TEMPLATES).map((k) => [k, t("template." + k)]), value: "viewer" });
+    const out = h("div", { class: "eco-span-2" });
+    ui.dialog({ title: t("prof.new"), icon: "shield", width: 560, body: h("div", { class: "eco-form" }, ui.field(t("prof.code"), code, { required: true, hint: t("prof.code_hint") }), ui.field(t("prof.name"), name, { required: true }),
+      h("div", { class: "eco-span-2" }, ui.field(t("prof.template"), from, { hint: t("prof.template_hint") })), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("prof.create"), kind: "primary", icon: "check", onClick: async () => {
+      const c = code.value.trim().toLowerCase();
+      if (!/^[a-z][a-z0-9_]{2,30}$/.test(c)) { ui.clear(out, ui.banner("bad", t("prof.code_hint"))); return false; }
+      if (profiles.some((p) => p.code === c)) { ui.clear(out, ui.banner("bad", t("prof.exists"))); return false; }
+      if (!name.value.trim()) { ui.clear(out, ui.banner("bad", t("prof.name_required"))); return false; }
+      try { await api("PUT", "/api/admin/profiles/" + c, { name: name.value.trim(), perms: TEMPLATES[from.value], expected_ver: null }); ui.toast({ kind: "ok", title: t("saved"), text: name.value, keep: true }); load(c); return true; }
+      catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; }
+    } }] });
   }
   async function load(keep) {
-    try { profiles = await api("GET", "/api/admin/profiles"); current = profiles.find((p) => p.code === (keep || (current && current.code))) || profiles.find((p) => p.code === "hr_officer") || profiles[0]; draw(); }
-    catch (e) { ui.clear(matrix, ui.empty({ icon: "x-octagon", title: e.message })); }
+    try {
+      [profiles, users] = await Promise.all([api("GET", "/api/admin/profiles"), api("GET", "/api/admin/users").catch(() => [])]);
+      current = profiles.find((p) => p.code === (keep || (current && current.code))) || profiles.find((p) => p.code === "hr_officer") || profiles[0];
+      work = null; draw();
+    } catch (e) { ui.clear(matrix, ui.empty({ icon: "x-octagon", title: e.message })); }
   }
   load();
   return { el: sc.el };
@@ -879,7 +1057,7 @@ function auditScreen({ shell }) {
     { key: "ip", label: t("audit.ip"), type: "code", width: 110 },
     { key: "detail", label: t("audit.detail"), width: 360, value: (r) => Object.entries(r.detail || {}).map(([k, v]) => k + "=" + (typeof v === "object" ? JSON.stringify(v) : v)).join("  ") },
   ], { rowKey: "seq", selection: "single", layoutKey: "SEC9030", rowStatus: (r) => (/denied|failed|refused|locked/.test(r.event) ? "down" : null), onSelect: (sel) => draw(sel[0]) });
-  const sc = ui.screen({ code: "SEC9030", title: t("nav.audit"), path: [t("g.security")], shell,
+  const sc = screen({ code: "SEC9030", title: t("nav.audit"), path: [t("g.security")], shell,
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("audit"), exportLabel: t("export"), columns: () => g.columnsDialog() },
     conditions: conds, grid: g, detail, detailKey: "SEC9030:detail", note: integrity });
   function draw(r) {
@@ -923,7 +1101,7 @@ function backupsScreen({ shell }) {
     try { const r = await api("POST", "/api/admin/backups"); ui.toast({ kind: r.rehearsal.ok ? "ok" : "bad", title: r.rehearsal.ok ? t("backup.made", { name: r.name }) : t("failed_title"), text: r.rehearsal.ok ? "" : r.rehearsal.problems.join("; "), keep: true }); load(r.name); }
     catch (e) { fail(e); }
   } });
-  const sc = ui.screen({ code: "SYS9070", title: t("nav.backups"), path: [t("g.system")], shell, toolbar: [make],
+  const sc = screen({ code: "SYS9070", title: t("nav.backups"), path: [t("g.system")], shell, toolbar: [make],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("backups"), exportLabel: t("export") }, grid: g, detail, detailKey: "SYS9070:detail", note: top });
   async function act(b, action) {
     if (action === "restore" && !(await ui.confirm({ title: t("backup.restore"), text: t("backup.confirm_restore", { name: b.name }), danger: true, okLabel: t("backup.restore") }))) return;
@@ -968,7 +1146,7 @@ function backupsScreen({ shell }) {
 // ------------------------------------------------------------------ System health
 function healthScreen({ shell }) {
   const body = h("div", { class: "hr-page" });
-  const sc = ui.screen({ code: "SYS9100", title: t("nav.health"), path: [t("g.system")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh" }, body });
+  const sc = screen({ code: "SYS9100", title: t("nav.health"), path: [t("g.system")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh" }, body });
   const tile = (ic, title, ok, main, sub) => h("div", { class: ["hr-tile", ok === true ? "is-ok" : ok === false ? "is-bad" : "is-neutral"] },
     h("div", { class: "hr-tile-top" }, h("span", { class: "hr-tile-icon" }, ui.icon(ic, 18)), h("span", { class: "hr-tile-title", text: title }),
       ok === null ? null : ui.statusChip(ok ? "ok" : "bad", ok ? t("ok") : t("problem"))),
@@ -1001,7 +1179,7 @@ function settingsScreen({ shell }) {
   const body = h("div", { class: "hr-page hr-narrow" });
   let s = null;
   const save = ui.button({ label: t("save"), icon: "save", kind: "primary", onClick: () => store() });
-  const sc = ui.screen({ code: "SYS9060", title: t("nav.settings"), path: [t("g.system")], shell, toolbar: [save], body });
+  const sc = screen({ code: "SYS9060", title: t("nav.settings"), path: [t("g.system")], shell, toolbar: [save], body });
   let auto, lang, hours;
   async function load() {
     try {
@@ -1037,46 +1215,70 @@ function dashboardScreen({ shell }) {
   async function load() {
     try {
       const R = await refs(true);
-      const [hh, audit, users] = await Promise.all([can("admin.system.read") ? api("GET", "/api/admin/health").catch(() => null) : null,
-        can("admin.audit.read") ? api("GET", "/api/admin/audit?limit=8").catch(() => []) : [], can("admin.users.manage") ? api("GET", "/api/admin/users").catch(() => []) : []]);
+      const [hh, audit, users, found] = await Promise.all([can("admin.system.read") ? api("GET", "/api/admin/health").catch(() => null) : null,
+        can("admin.audit.read") ? api("GET", "/api/admin/audit?limit=8").catch(() => []) : [], can("admin.users.manage") ? api("GET", "/api/admin/users").catch(() => []) : [],
+        advisorFindings().catch(() => [])]);
       const emp = R.employees, active = emp.filter((e) => e.employment_status === "Active").length, leave = emp.filter((e) => e.employment_status === "Leave").length;
       const depts = R.units.filter((u) => u.type === "department");
-      const filled = R.positions.filter((p) => emp.some((e) => e.position_id === p.id)).length;
-      const byDept = depts.map((d) => [d, emp.filter((e) => { const u = R.unitOf(e); return u && (u.id === d.id || u.parent_id === d.id); }).length]).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const filled = R.positions.filter((p) => emp.some((e) => e.position_id === p.id && e.employment_status !== "Terminated")).length;
+      const byDept = depts.map((d) => [d, emp.filter((e) => { const u = R.unitOf(e); return e.employment_status !== "Terminated" && u && (u.id === d.id || u.parent_id === d.id); }).length]).sort((a, b) => b[1] - a[1]).slice(0, 8);
       const statuses = ["Active", "Leave", "Suspended", "Terminated"].map((s) => [s, emp.filter((e) => e.employment_status === s).length]);
+      const serious = found.filter((f) => f.severity !== "tip"), tips = found.length - serious.length;
+      const hires = emp.filter((e) => e.hire_date && e.employment_status !== "Terminated").sort((a, b) => b.hire_date.localeCompare(a.hire_date)).slice(0, 5);
       const c = S.info.company || {};
-      const quick = (code, ic, key) => (shell.screens[code] ? h("button", { type: "button", class: "hr-quick", onclick: () => shell.open(code) }, h("span", { class: "hr-quick-ic" }, ui.icon(ic, 18)), h("span", { text: t(key) })) : null);
+      const first = String(S.me.display_name || S.me.user || "").split(/\s+/)[0];
+      // quick actions (Mizan's dashboard card): only what this person may do
+      const quick = [["EMP1010", "user-plus", "dash.q.employee", "hr.employees.write"], ["ATT2010", "calendar-check", "dash.q.attendance", "hr.attendance.upload"],
+        ["SHF3010", "calendar", "dash.q.roster", "hr.shifts.read"], ["SKL2010", "shield", "dash.q.qualification", "hr.skills.write"], ["ADV1010", "clipboard-check", "dash.q.advisor", null],
+        ["SYS9070", "archive", "dash.q.backup", "admin.backup.manage"]].filter(([code, , , perm]) => shell.screens[code] && (!perm || can(perm)));
+      const card = (o) => ui.card(o);
       ui.clear(body,
-        h("div", { class: "hr-dash-head" }, h("div", {}, h("h1", { text: t("home.hello", { name: S.me.display_name }) }), h("span", { class: "eco-muted" }, c.name || "", " · ", new Date().toLocaleDateString(S.lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }))),
-          h("span", { class: "eco-grow" }), h("div", { class: "hr-row" }, quick("EMP1010", "user-plus", "nav.employees"), quick("ATT2010", "calendar-check", "nav.attendance"), quick("SYS9070", "archive", "nav.backups"))),
+        h("div", { class: "hr-dash-head" }, h("div", {}, h("h1", { text: t("home.hello", { name: first }) }),
+          h("p", { class: "hr-dash-sub" }, c.name ? t("dash.subtitle", { company: c.name }) + " · " : "", new Date().toLocaleDateString(S.lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }))),
+          h("span", { class: "eco-grow" }), h("div", { class: "hr-row" }, shell.screens.EMP1010 && can("hr.employees.write") ? ui.button({ label: t("new.employee"), icon: "user-plus", kind: "primary", onClick: () => shell.open("EMP1010") }) : null,
+            ui.button({ label: t("dash.search"), icon: "search", onClick: () => shell.palette(), kbd: "Ctrl K" }))),
         c.provisional ? ui.banner("warn", t("company.provisional_help"), { title: t("company.provisional") }) : null,
         h("div", { class: "hr-kpis" },
-          ui.kpi({ label: t("dash.employees"), value: ui.fmtNumber(emp.length), icon: "users", hint: t("dash.active_n", { n: active }), status: "run" }),
+          ui.kpi({ label: t("dash.employees"), value: ui.fmtNumber(emp.filter((e) => e.employment_status !== "Terminated").length), icon: "users", hint: t("dash.active_n", { n: active }) }),
           ui.kpi({ label: t("dash.on_leave"), value: ui.fmtNumber(leave), icon: "calendar", status: "idle", hint: t("dash.today") }),
-          ui.kpi({ label: t("dash.departments"), value: ui.fmtNumber(depts.length), icon: "sitemap", hint: t("dash.units_n", { n: R.units.length }) }),
-          ui.kpi({ label: t("dash.positions"), value: filled + " / " + R.positions.length, icon: "id-card", hint: t("dash.filled"), status: "setup" }),
-          ui.kpi({ label: t("dash.users"), value: users.length ? String(users.filter((u) => u.active).length) : "—", icon: "shield", hint: t("dash.can_sign_in"), status: "hold" })),
-        h("div", { class: "hr-dash-grid" }, h("div", { class: "hr-dash-col" },
-          ui.card({ title: t("dash.by_department"), subtitle: t("dash.by_department_sub"), icon: "chart", body: byDept.length ? ui.barChart({ labels: byDept.map(([d]) => d.code), series: [{ label: t("dash.employees"), values: byDept.map(([, n]) => n) }], height: 240, width: 760 })
+          ui.kpi({ label: t("dash.positions"), value: filled + " / " + R.positions.length, icon: "id-card", status: "setup", hint: R.positions.length ? t("dash.filled_pct", { n: Math.round((filled / R.positions.length) * 100) }) : t("dash.filled") }),
+          ui.kpi({ label: t("dash.attention"), value: String(serious.length), icon: "clipboard-check", status: found.some((f) => f.severity === "error") ? "bad" : serious.length ? "warn" : "ok", hint: t("dash.attention_hint", { n: tips }) })),
+        h("div", { class: "hr-dash-grid" },
+          card({ title: t("dash.by_department"), subtitle: t("dash.by_department_sub"), icon: "chart", body: byDept.length ? ui.barChart({ labels: byDept.map(([d]) => d.code), series: [{ label: t("dash.employees"), values: byDept.map(([, n]) => n) }], height: 230, width: 760 })
             : ui.empty({ icon: "chart", title: t("dash.no_data"), text: t("dash.no_data_help") }), actions: shell.screens.ORG1010 ? [ui.button({ label: t("nav.structure"), kind: "ghost", size: "sm", icon: "sitemap", onClick: () => shell.open("ORG1010") })] : null }),
-          audit.length ? ui.card({ title: t("dash.activity"), icon: "history", body: h("ul", { class: "hr-activity" }, audit.map((a) => h("li", {}, h("span", { class: "hr-dot" }), h("div", {}, h("b", {}, ui.ltr(a.event)),
-            h("small", { class: "eco-muted" }, ui.ltr(a.actor), " · ", ui.ltr((a.at || "").slice(0, 16).replace("T", " ")))))) ), actions: [ui.button({ label: t("nav.audit"), kind: "ghost", size: "sm", onClick: () => shell.open("SEC9030") })] }) : null),
-          h("div", { class: "hr-dash-col" },
-          ui.card({ title: t("dash.status"), icon: "activity", body: h("div", { class: "hr-bars" }, statuses.map(([s, n]) => h("div", { class: "hr-bar-row" }, h("span", { text: value(s) }),
-            ui.progress(n, Math.max(1, emp.length), { label: String(n), status: STATUS_ST[s] }))) ) }),
-          hh ? ui.card({ title: t("dash.system"), icon: "shield", body: h("div", { class: "hr-checks" },
-            [[hh.journal.ok, t("health.journal")], [hh.audit.ok, t("health.audit")], [!!(hh.last_backup && hh.last_backup.rehearsal && hh.last_backup.rehearsal.ok), t("health.last_backup")], [hh.recovery ? hh.recovery.intact : null, t("health.recovery")]]
-              .map(([ok, k]) => h("div", { class: "hr-check" }, ui.icon(ok === null ? "info" : ok ? "check-circle" : "x-octagon", 16, ok === null ? "eco-muted" : ok ? "hr-ok" : "hr-bad"), h("span", { text: k })))),
-          actions: [ui.button({ label: t("nav.health"), kind: "ghost", size: "sm", onClick: () => shell.open("SYS9100") })] }) : null)));
+          card({ title: t("dash.quick"), icon: "zap", actions: [ui.kbd("Ctrl"), ui.kbd("K")], cls: "hr-quick-card", body: h("div", { class: "hr-quick-list" }, quick.map(([code, ic, key]) =>
+            h("button", { type: "button", class: "hr-quick-item", onclick: () => shell.open(code) }, h("span", { class: "hr-quick-ic" }, ui.icon(ic, 16)), h("span", { text: t(key) }), ui.icon(ui.isRTL() ? "chev-left" : "chev-right", 14, "eco-muted")))) })),
+        h("div", { class: "hr-dash-2" },
+          card({ title: t("dash.status"), icon: "activity", body: emp.length ? ui.donut({ parts: statuses.map(([s, n]) => ({ label: value(s), value: n, status: { Active: "ok", Leave: "idle", Suspended: "hold", Terminated: "neutral" }[s] })), centerLabel: t("dash.employees") })
+            : ui.empty({ icon: "users", title: t("emp.empty") }) }),
+          card({ title: t("nav.advisor"), icon: "clipboard-check", cls: "hr-flush", actions: shell.screens.ADV1010 ? [ui.button({ label: t("dash.open_all"), size: "sm", onClick: () => shell.open("ADV1010") })] : null,
+            body: serious.length ? h("ul", { class: "hr-adv-list" }, serious.slice(0, 5).map((f) => h("li", {}, ui.icon(f.severity === "error" ? "x-octagon" : "alert", 16, f.severity === "error" ? "hr-bad" : "hr-warn"),
+              h("button", { type: "button", class: "eco-linkbtn", text: t("adv." + f.id + ".title", f.vars), onclick: () => shell.open("ADV1010") }), h("span", { class: "eco-count", text: String(f.items.length || "") })))))
+              : h("div", { class: "hr-row hr-pad2" }, ui.icon("check-circle", 18, "hr-ok"), h("span", { text: tips ? t("dash.only_tips", { n: tips }) : ui.kitText("all_clear") })) })),
+        h("div", { class: "hr-dash-2" },
+          card({ title: t("dash.new_hires"), icon: "user-check", cls: "hr-flush", body: hires.length ? h("ul", { class: "hr-list" }, hires.map((e) => h("li", {}, ui.avatar(e.preferred_name || e.code, 30),
+            h("div", {}, h("b", { text: e.preferred_name || e.code }), h("small", { class: "eco-muted", text: [R.name(R.jobOf(e)), R.name(R.unitOf(e))].filter(Boolean).join(" · ") || e.code })), h("span", { class: "eco-grow" }), ui.ltr(e.hire_date, "eco-muted"))))
+            : h("div", { class: "hr-pad2 eco-muted", text: t("none") }) }),
+          audit.length ? card({ title: t("dash.activity"), icon: "history", cls: "hr-flush", body: h("ul", { class: "hr-activity" }, audit.map((a) => h("li", {}, h("span", { class: "hr-dot" }), h("div", {}, h("b", {}, ui.ltr(a.event)),
+            h("small", { class: "eco-muted" }, ui.ltr(a.actor), " · ", ui.ltr((a.at || "").slice(0, 16).replace("T", " ")))))) ), actions: [ui.button({ label: t("nav.audit"), kind: "ghost", size: "sm", onClick: () => shell.open("SEC9030") })] })
+            : hh ? card({ title: t("dash.system"), icon: "shield", body: systemChecks(hh), actions: [ui.button({ label: t("nav.health"), kind: "ghost", size: "sm", onClick: () => shell.open("SYS9100") })] }) : null),
+        audit.length && hh ? card({ title: t("dash.system"), icon: "shield", body: systemChecks(hh), actions: [ui.button({ label: t("nav.health"), kind: "ghost", size: "sm", onClick: () => shell.open("SYS9100") })] }) : null,
+        users.length ? ui.kpiStrip([{ label: t("dash.users"), value: users.filter((u) => u.active).length, hint: t("dash.can_sign_in") }, { label: t("dash.departments"), value: depts.length, hint: t("dash.units_n", { n: R.units.length }) },
+          { label: t("nav.jobs"), value: R.jobs.length }, { label: t("nav.skills"), value: R.skills.length }, { label: t("nav.shifts"), value: R.shifts.length }]) : null);
     } catch (e) { ui.clear(body, ui.banner("bad", e.message)); }
   }
   load();
   return { el: body, onActivate: () => { if (S.refs === null) load(); } };
 }
+function systemChecks(hh) {
+  return h("div", { class: "hr-checks" }, [[hh.journal.ok, t("health.journal")], [hh.audit.ok, t("health.audit")], [!!(hh.last_backup && hh.last_backup.rehearsal && hh.last_backup.rehearsal.ok), t("health.last_backup")],
+    [hh.recovery ? hh.recovery.intact : null, t("health.recovery")]].map(([ok, k]) => h("div", { class: "hr-check" }, ui.icon(ok === null ? "info" : ok ? "check-circle" : "x-octagon", 16, ok === null ? "eco-muted" : ok ? "hr-ok" : "hr-bad"), h("span", { text: k }))));
+}
 
 // ------------------------------------------------------------------ the shell
 const SCREENS = {
   HOME: ["nav.home", "dashboard", null, dashboardScreen],
+  ADV1010: ["nav.advisor", "clipboard-check", null, advisorScreen],
   EMP1010: ["nav.employees", "users", "hr.employees.read", employeesScreen],
   ATT2010: ["nav.attendance", "calendar-check", "hr.attendance.read", attendanceScreen],
   ORG1010: ["nav.structure", "sitemap", "hr.org.read", structureScreen],
@@ -1097,7 +1299,7 @@ const SCREENS = {
   SYS9100: ["nav.health", "activity", "admin.system.read", healthScreen],
   SYS9060: ["nav.settings", "settings", "admin.settings.manage", settingsScreen],
 };
-const MENU = [["people", "users", ["EMP1010", "ATT2010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060"]]];
+const MENU = [["people", "users", ["EMP1010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060"]]];
 function showShell() {
   const screens = {};
   for (const [code, [key, icon, perm, create]] of Object.entries(SCREENS)) {
@@ -1112,6 +1314,15 @@ function showShell() {
     product: { name: t("product.name"), short: "HR", edition: t("edition") }, company: c.name ? { name: c.name, code: c.code, note: c.provisional ? t("company.provisional") : t("company.source." + c.source) } : null,
     user: { name: S.me.display_name, role: profileName(S.me.profile), detail: S.me.user }, menu, screens, home: "HOME", maxTabs: 10, hideCodesInMenu: true, searchExample: "EMP1010",
     onTheme: setTheme, onLanguage: setLanguage,
+    // actions in the screen search (Ctrl+K), as in Mizan's command palette: only what this person may do
+    commands: [
+      can("hr.employees.write") ? { title: t("new.employee"), icon: "user-plus", keywords: "new add hire employee", run: () => editRecord("employee", null).then((ok) => ok && shell.open("EMP1010")) } : null,
+      can("hr.org.write") ? { title: t("new.position"), icon: "id-card", keywords: "new position", run: () => editRecord("position", null) } : null,
+      can("hr.shifts.write") ? { title: t("new.shift_assignment"), icon: "calendar-check", keywords: "assign shift", run: () => editRecord("shift_assignment", null, { kind: "regular", valid_from: localToday() }) } : null,
+      can("hr.skills.write") ? { title: t("new.employee_skill"), icon: "shield", keywords: "certify qualification skill", run: () => editRecord("employee_skill", null, { level: 3, certified_on: localToday() }) } : null,
+      can("admin.backup.manage") ? { title: t("backup.create"), icon: "archive", keywords: "backup now", run: async () => { try { const r = await api("POST", "/api/admin/backups"); ui.toast({ kind: r.rehearsal.ok ? "ok" : "bad", title: t("backup.made", { name: r.name }), keep: true }); } catch (e) { fail(e); } } } : null,
+      { title: t("password.title"), icon: "key", keywords: "password", run: () => showPassword(false) },
+    ].filter(Boolean),
     onActivate: () => ui.prefs.set("tabs", [...document.querySelectorAll(".eco-view")].map((v) => v.dataset.code)),
     userMenu: [{ label: t("password.title"), icon: "key", onSelect: () => showPassword(false) },
       { label: t("nav.signout"), icon: "logout", onSelect: async () => { try { await api("POST", "/api/logout"); } catch (_) { /* signed out anyway */ } S.me = null; ui.prefs.set("tabs", []); showLogin(); } }],

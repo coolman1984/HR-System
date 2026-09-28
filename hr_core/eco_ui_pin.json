@@ -1,10 +1,18 @@
 {
- "what": "The ecosystem interface kit, copied UNCHANGED from GMES packages/eco-ui/src (ADR-029 there). Change it in GMES, then copy it here with this pin; TEST_HR_DELIVERY.py refuses any other copy.",
- "source": "https://github.com/coolman1984/GMES/tree/7f06fa816bb23e6f0aa6e69028790cf656143e43/packages/eco-ui/src",
- "commit": "7f06fa816bb23e6f0aa6e69028790cf656143e43",
- "files": {
-  "eco-ui.css": "38106f4b32f2661a37575e5360bf55928e9590091830983711acf262b2ee7fba",
-  "eco-ui.js": "4d73fcadcaf89c3dd5790096c842ef4fce798844642b6ae00fb552fd00091a09",
-  "tokens.css": "4a4bd38631e23decbeb85467c7270720f3042208fcc0ae94332ce95ab031e603"
- }
+  "what": "The ecosystem interface kit, copied UNCHANGED from GMES packages/eco-ui/src (ADR-029 there), fonts/ included. Change it in GMES, then copy it here with this pin; TEST_HR_DELIVERY.py refuses any other copy.",
+  "source": "https://github.com/coolman1984/GMES/tree/4d27f55522a4e21314963af5e99bb7366eb43303/packages/eco-ui/src",
+  "commit": "4d27f55522a4e21314963af5e99bb7366eb43303",
+  "files": {
+    "eco-ui.css": "c875d666e6c00b5244465c9dd1f0a60d4e5b7d660a15cfd8bb20fe4046ae1d92",
+    "eco-ui.js": "7f706e7c10be6619eab637e067e9644d1d3c2b990c6ff2089141985e5a971224",
+    "fonts/ibm-plex-sans-arabic-arabic-400-normal.woff2": "6010e7fd0dce5d527583951750728cbe3c895efbd16aa0f809ab8c824878c9d8",
+    "fonts/ibm-plex-sans-arabic-arabic-500-normal.woff2": "90aef64fea9794f232332e907d45810ab268d1a11721340025eba2a2cdb36d5c",
+    "fonts/ibm-plex-sans-arabic-arabic-600-normal.woff2": "16734a5adb27b0f363e566cbbeacec480da0dc0baa19c8f0053251c2e2bc0eac",
+    "fonts/ibm-plex-sans-arabic-arabic-700-normal.woff2": "04c730b4292731ccedadd5bd80756124364ae4923895145d9cd7b1f28e443de1",
+    "fonts/IBMPlexSansArabic-OFL.txt": "1c32ddc3fc6efd167cdcbe475195287f2dc26ed1a4c92fbe31c87ceaffe44f98",
+    "fonts/inter-latin-ext-wght-normal.woff2": "34b9c504cab7a73e37b746343a449132e56cf7b5481af2cb81dc74dcff25c956",
+    "fonts/inter-latin-wght-normal.woff2": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62",
+    "fonts/Inter-OFL.txt": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345",
+    "tokens.css": "676c5c489d04ad23ca508e91ec781875ef17eb67aecae9b6cbb85d9734fdbbe1"
+  }
 }

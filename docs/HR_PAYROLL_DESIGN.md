@@ -60,3 +60,20 @@ Hand-calculated reference employees (monthly, daily, hourly, night overtime, abs
 determinism (recalculate = same fingerprint); a sent period cannot change; adjustment period; four-eyes approval;
 no per-person amount in the published summary; the Mizan entry balances (end to end against a real Mizan, like GMES's
 link); planted bugs for every rule.
+
+## 9. Design input from Mizan (2026-09-28, owner's order: take Mizan's good ideas) — still design only
+Mizan (`coolman1984/Accounting-sys`) already holds a working Egyptian payroll engine that HR should reuse **as rules and
+test vectors, not as code** (it is TypeScript; HR is standard-library Python) when the gate in §2 is green:
+- **Salary tax, Law 7/2024:** the brackets, the high-income rule above EGP 600,000 a year, rounding down to EGP 10
+  (`Accounting-sys/apps/server/src/modules/payroll/engine.ts`, `egyptSalaryTax()`), and the law's worked examples that
+  Mizan's tests use: copy them into HR's reference employees (§8) so both products give the same tax to the piaster.
+- **Social insurance:** employee 11 %, employer 18.75 % of the insurable wage, between the yearly floor and ceiling
+  (`Accounting-sys/apps/server/src/contracts/egypt.ts`; Mizan's own note: the 2026 limits must be confirmed against the
+  NOSI circular before use).
+- **Pay elements** as Mizan models them: country-neutral components with `floor`, `insurable` and a tax rule
+  (`Accounting-sys/docs/DECISIONS.md` ADR-017); money kept to the piaster (Mizan's lesson: rounding to whole pounds by
+  hand disagrees with the law's examples).
+- **Advisor checks** for payroll (insurable wage outside the limits, tax or insurance due): add them to HR's Advisor
+  (`ADV1010`) when payroll exists.
+- **Consequence for Mizan:** once HR calculates pay, Mizan's own `payroll` module (employees + calculation) becomes
+  "payroll posting from HR" (ADR-022 in GMES); until then the two must not both be used for the same company.

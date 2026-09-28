@@ -8,6 +8,34 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-28 — Mizan's look and ideas in HR-System (phase 2.6, through the shared kit)
+- **What:** on the owner's order ("take Mizan's design, look, features and ideas"): the kit is re-copied from GMES
+  `4d27f55` (ADR-033 there) with its new opt-in modern look (Mizan's tokens, Inter + IBM Plex Sans Arabic carried in
+  `eco-ui/fonts/`), column filters, grouping and presets in every grid, filter chips, actions in the screen search. HR uses
+  the modern look by default (a person may switch back). New in HR: the **Advisor** (`ADV1010`, 23 daily checks with the
+  reason, what to do and the records concerned, computed from what the person may already read), a Mizan-style
+  **dashboard** (KPIs, quick actions, status donut, advisor card, latest hires), the **rights matrix** (object × action pills,
+  templates, "rights that should be separated" warnings, new profiles from a template), a subtitle and a help text on every
+  screen, grid presets, print, and Mizan's sign-in look. 187 new texts in each language. No new route, right or data shape.
+- **Why:** the owner judged Mizan the more advanced product. Its React code cannot enter a standard-library program with
+  no build step, and a copy in HR alone would split the ecosystem's look, so the ideas went into the kit once (GMES) and
+  HR took the kit unchanged. Mizan's Egyptian payroll rules are recorded as design input only (`docs/HR_PAYROLL_DESIGN.md`).
+
+### The planted-bug run changed the line endings of 14 files on Windows
+- **Symptom:** after `python migration/mutations.py` on Windows, 14 files (among them `PROJECT.json`, the locked
+  core, `hr_core/vendor/ed25519_bams.py`) showed as modified with no visible change; `git diff --ignore-cr-at-eol` was empty.
+- **Cause:** the run read each file with `Path.read_text` and put it back with `Path.write_text`, which on Windows writes
+  every LF as CRLF. The repository stores files byte for byte (`* -text`) and pins some of them by hash.
+- **Fix:** the files were converted back (CRLF to LF only, content untouched); `mutations.py` now reads and writes bytes.
+- **Lesson:** a tool that "puts a file back" must put back the same bytes; text mode is a change on Windows.
+
+### The kit's pin could not hold a folder
+- **Symptom:** the new kit carries its typefaces in `eco-ui/fonts/`; the pin check hashed `iterdir()` entries and would
+  have tried to read the folder as a file.
+- **Cause:** the check was written when the kit was three flat files.
+- **Fix:** the check hashes every file below the kit by its relative path; `web.py` serves `.woff2` (and the licence `.txt`).
+- **Lesson:** a pin describes a tree, not a directory listing.
+
 ## 2026-09-28 — Shifts (phase 3) and skills (phase 5) built; payroll designed, not built
 - **What:** on the owner's order: shifts, working calendars, effective-dated assignments, day changes and swaps, the
   planned schedule and its comparison with attendance (`hr_core/scheduling.py`); skills and qualifications with levels

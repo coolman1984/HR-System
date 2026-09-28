@@ -165,12 +165,13 @@ for name, rel, old, new, test in MUTATIONS:
         if path.exists():
             sys.exit(f"mutation '{name}': {rel} already exists")
         original = None
-        path.write_text(new, encoding="utf-8")
+        path.write_bytes(new.encode("utf-8"))
     else:
-        original = path.read_text(encoding="utf-8")
-        if old not in original:
+        # bytes, not text: on Windows write_text turns every LF into CRLF, which changed 14 files (hash-pinned ones too)
+        original = path.read_bytes()
+        if old.encode("utf-8") not in original:
             sys.exit(f"mutation '{name}': anchor not found in {rel}")
-        path.write_text(original.replace(old, new, 1), encoding="utf-8")
+        path.write_bytes(original.replace(old.encode("utf-8"), new.encode("utf-8"), 1))
     try:
         env = dict(os.environ, PYTHONPATH=str(ROOT / "vendor.zip"))
         failed = subprocess.run([sys.executable, test], cwd=ROOT, env=env, capture_output=True).returncode != 0
@@ -178,7 +179,7 @@ for name, rel, old, new, test in MUTATIONS:
         if original is None:
             path.unlink()
         else:
-            path.write_text(original, encoding="utf-8")
+            path.write_bytes(original)
     print(("caught    " if failed else "SURVIVED  ") + name)
     survived += 0 if failed else 1
 subprocess.run(["git", "checkout", "--", "sample/"], cwd=ROOT, capture_output=True)

@@ -437,11 +437,20 @@ check("every_permission_has_a_translated_name", all(f"perm.{p}" in en for p in P
 web_js = {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8") for p in (ROOT / "hr_core/web").rglob("*.js")}
 check("the_screens_write_server_values_as_text_only", all(not re.search(r"\.innerHTML|outerHTML\s*=|insertAdjacentHTML|document\.write|\beval\(|new Function\(", src)
                                                        for src in web_js.values()), [n for n, src in web_js.items() if "insertAdjacentHTML" in src or "innerHTML" in src])
+rights_block = js[js.index("const SOD = "):js.index("const PERM_ACTIONS")]
+named_rights = set(re.findall(r'"((?:hr|admin)\.[a-z_]+\.[a-z_]+)"', rights_block))
+check("templates_and_separated_duties_name_real_rights", named_rights and named_rights <= set(PERMISSIONS), sorted(named_rights - set(PERMISSIONS)))
+codes = set(re.findall(r'^  ([A-Z]{3}\d{4}): \[', js, re.M))
+check("every_screen_has_a_subtitle_and_help_in_both_languages", "ADV1010" in codes and all(f"{p}.{c}" in en and f"{p}.{c}" in ar for c in codes for p in ("sub", "about")),
+      sorted(c for c in codes if f"about.{c}" not in en))
+adv_ids = set(re.findall(r'\badd\("([a-z_]+)"', js))
+check("every_advisor_finding_has_its_words", adv_ids and all(f"adv.{i}.{p}" in en for i in adv_ids for p in ("title", "body", "fix")), sorted(i for i in adv_ids if f"adv.{i}.title" not in en))
 named = set(re.findall(r'"((?:nav|g|sec|perm_group|door)\.[a-z_]+)"', js))
 check("every_menu_and_section_name_is_translated", named and named <= set(en), sorted(named - set(en)))
 import hashlib  # noqa: E402
 pin = json.load(open(ROOT / "hr_core/eco_ui_pin.json", encoding="utf-8"))
-kit = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "hr_core/web/eco-ui").iterdir()}
+KIT = ROOT / "hr_core/web/eco-ui"
+kit = {p.relative_to(KIT).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in KIT.rglob("*") if p.is_file()}  # the typefaces sit in fonts/
 check("the_interface_kit_is_the_unchanged_copy_from_gmes", kit == pin["files"] and len(pin["commit"]) == 40,
       sorted(k for k in set(kit) | set(pin["files"]) if kit.get(k) != pin["files"].get(k)))
 import importlib.util  # noqa: E402  (tools/ is not a package; loaded by path so CHECK_ENVIRONMENT sees no import)

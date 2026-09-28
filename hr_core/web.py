@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 LOCAL = {"127.0.0.1", "::1"}
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-         ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml"}
+         ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
 # the screens only need these; anything that could run code from another site is refused
 SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN", "Referrer-Policy": "no-referrer",
                     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "

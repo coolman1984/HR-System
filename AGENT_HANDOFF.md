@@ -29,6 +29,12 @@ are now one application shell built from the ecosystem's interface kit (`hr_core
 GMES `packages/eco-ui/src`, pinned by SHA-256 in `hr_core/eco_ui_pin.json`). Waiting for: the owner's approval of the
 look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-acceptance.md`).
 
+**Mizan's look and ideas (2026-09-28, owner's order):** the kit (GMES `4d27f55`, ADR-033 there) now has an opt-in
+*modern* look taken from Mizan, and HR uses it by default; the grid filters every column, groups and has presets. HR added
+the Advisor (`ADV1010`), a Mizan-style dashboard, the rights matrix with templates and separated duties, and a subtitle and
+help on every screen. All automated checks are green; **nobody has looked at these screens in a browser yet** (the browser
+link and the server run were lost in that session) — do that first: English and Arabic, light and dark, both looks.
+
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
   on 2026-09-27 when the ecosystem needed one owner for people (`MIGRATION.md`).
@@ -50,6 +56,9 @@ look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-accep
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
+00. Look at the Mizan-style screens in a real browser (dashboard, Advisor, employees with column filters and grouping,
+   profiles matrix, sign-in) in both languages and themes; retake `docs/ux/` screenshots. Fix the look in GMES
+   `packages/eco-ui/src` (kit) or `hr_core/web/hr.css` (HR's own parts), never in `hr_core/web/eco-ui/`.
 0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his G-MES screenshot comparison to the TOKENS in
    GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
    Never edit `hr_core/web/eco-ui/` in this repository.
@@ -71,6 +80,9 @@ commit. A new rule gets a new planted bug. A failing `TEST_DOCS_CURRENT.py` mean
 document, never the expectation.
 
 ## Open decisions for the owner
+- Should GMES also use the modern look? (Today: GMES classic, HR modern; both from the same kit.)
+- Mizan's Egyptian payroll rules (Law 7/2024 salary tax, social insurance): recorded as design input; code only after
+  the payroll gate (`docs/HR_PAYROLL_DESIGN.md` §2).
 - A code-signing certificate before selling (the "unknown publisher" warning is accepted for trials only).
 - When a standalone customer later adopts Mizan: build the adoption and matching step (planned, ADR-HR-006).
 - The re-upload quirk (same attendance bytes + new auxiliary files are ignored): fix or keep.

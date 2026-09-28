@@ -69,6 +69,13 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L20** End every long session by updating `STATUS.md`, `AGENT_HANDOFF.md`, `HISTORY.md` and this file before
   pushing; the next session has no chat, only files.
 
+## Look and shared kit
+- **L41** A good idea from a neighbour enters the shared kit (GMES `packages/eco-ui`) once, then every product copies
+  it; never restyle one product alone (HISTORY 2026-09-28, Mizan's look). A new look is opt-in per product.
+- **L42** A tool that restores a file must restore the same bytes: on Windows `Path.write_text` turns LF into CRLF and
+  silently "changes" hash-pinned files (HISTORY 2026-09-28, planted-bug run).
+- **L43** A pin describes a tree of files (relative paths), not a flat directory listing.
+
 ## From the ecosystem (apply when the time comes)
 - **L21** Production quantities are never merged from several writers (GMES ADR-015). BAMS's multi-master merge is a
   reference for editable master data only.

@@ -113,7 +113,8 @@
 .hr-dash { display: flex; flex-direction: column; gap: 14px; padding: 18px 22px 26px; overflow: auto; }
 .hr-dash-head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .hr-dash-head h1 { font-size: var(--eco-fs-2xl); letter-spacing: -.02em; margin-bottom: 2px; }
-.hr-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.hr-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.hr-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .hr-dash-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 .hr-dash-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .hr-quick { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 6px; border: 1px solid var(--eco-line-2); border-radius: var(--eco-radius); background: var(--eco-surface); cursor: pointer; font: inherit; color: inherit; font-weight: 500; }
@@ -164,3 +165,86 @@
 .hr-q.is-valid { --c: var(--eco-ok); } .hr-q.is-expiring { --c: var(--eco-warn); } .hr-q.is-expired { --c: var(--eco-bad); } .hr-q.is-not_yet { --c: var(--eco-info); }
 .hr-q.is-none { background: transparent; border-style: dashed; }
 .hr-q:hover { filter: brightness(.97); border-color: var(--c); }
+
+/* ------------------------------------------------------------------ Mizan's ideas: dashboard, advisor, rights matrix */
+.hr-warn { color: var(--eco-warn); }
+.hr-pad2 { padding: 16px 20px; }
+.hr-loading { display: grid; place-items: center; padding: 64px; }
+.hr-allclear { gap: 14px; flex-wrap: nowrap; }
+.hr-allclear p { margin: 4px 0 0; }
+.hr-advisor { max-width: 1180px; }
+.hr-advisor > .eco-seg { align-self: flex-start; flex-wrap: wrap; }
+.hr-dash-sub { margin: 4px 0 0; color: var(--eco-text-2); font-size: var(--eco-fs-md); }
+.hr-dash-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.hr-flush .eco-card-body { padding: 0; }
+.hr-quick-card .eco-card-body { padding: 6px; }
+.hr-quick-list { display: flex; flex-direction: column; gap: 1px; }
+.hr-quick-item { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px; border: 0; border-radius: var(--eco-radius); background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.hr-quick-item:hover { background: var(--eco-surface-3); }
+.hr-quick-item > span:nth-child(2) { flex: 1; }
+.hr-adv-list, .hr-list { list-style: none; margin: 0; padding: 0; }
+.hr-adv-list li { display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--eco-line); }
+.hr-adv-list li:last-child, .hr-list li:last-child { border-bottom: 0; }
+.hr-adv-list .eco-linkbtn { flex: 1; color: var(--eco-text); }
+.hr-list li { display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--eco-line); }
+.hr-list li > div { display: flex; flex-direction: column; min-width: 0; }
+.hr-list li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-flush .hr-activity li { padding: 9px 20px; }
+.hr-pm { display: grid; gap: 12px; padding: 14px 16px; }
+.hr-pm-section { border: 1px solid var(--eco-line); border-radius: var(--eco-radius-lg); overflow: hidden; background: var(--eco-surface); }
+.hr-pm-section.is-off { opacity: .75; }
+.hr-pm-section header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--eco-surface-2); border-bottom: 1px solid var(--eco-line); }
+.hr-pm-section table { width: 100%; border-collapse: collapse; }
+.hr-pm-section th { width: 34%; padding: 8px 12px; text-align: start; font-weight: 500; vertical-align: middle; }
+.hr-pm-section th small { display: block; font: 500 10.5px var(--eco-mono); }
+.hr-pm-section td { padding: 6px 8px; }
+.hr-pm-section tr + tr > * { border-top: 1px solid var(--eco-line); }
+.hr-pm-cells { display: flex; flex-wrap: wrap; gap: 6px; }
+.hr-pm-cell { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border: 1px solid var(--eco-line); border-radius: var(--eco-radius-pill); background: var(--eco-surface);
+  color: var(--eco-text-2); font: inherit; font-size: var(--eco-fs-sm); cursor: pointer; transition: background var(--eco-speed), color var(--eco-speed), border-color var(--eco-speed); }
+.hr-pm-cell:hover:not(:disabled) { background: var(--eco-surface-3); }
+.hr-pm-cell.is-on { background: var(--eco-accent-soft); border-color: var(--eco-accent-line); color: var(--eco-accent-strong); font-weight: 600; }
+.hr-pm-cell:disabled { cursor: default; }
+@media (max-width: 1100px) { .hr-dash-2 { grid-template-columns: 1fr; } .hr-kpis-3 { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .hr-kpis { grid-template-columns: 1fr 1fr; } .hr-pm-section th { width: auto; display: block; padding-bottom: 0; } .hr-pm-section tr, .hr-pm-section td { display: block; } }
+
+/* ------------------------------------------------------------------ HR's own parts in the modern look */
+:root[data-look="modern"] .hr-page, :root[data-look="modern"] .hr-dash { gap: 20px; padding: 8px var(--eco-page-pad) 32px; }
+:root[data-look="modern"] .hr-dash { padding-top: 28px; max-width: 1360px; width: 100%; }
+:root[data-look="modern"] .hr-dash-head h1 { font-size: 26px; font-weight: 680; letter-spacing: -.028em; }
+:root[data-look="modern"][dir="rtl"] .hr-dash-head h1 { letter-spacing: 0; }
+:root[data-look="modern"] .hr-kpis, :root[data-look="modern"] .hr-dash-grid, :root[data-look="modern"] .hr-dash-2 { gap: 20px; }
+:root[data-look="modern"] .hr-card-head { padding: 18px 20px 12px; }
+:root[data-look="modern"] .hr-profile { padding: 20px; gap: 16px; }
+:root[data-look="modern"] .hr-record-head { padding: 18px 20px; }
+:root[data-look="modern"] .hr-record-icon, :root[data-look="modern"] .hr-tile-icon { border-radius: 11px; }
+:root[data-look="modern"] .hr-mini-kpis > div { border-radius: 12px; padding: 8px 14px; }
+:root[data-look="modern"] .hr-side { background: var(--eco-surface-2); }
+:root[data-look="modern"] .hr-side-head { min-height: 48px; padding: 6px 10px 6px 16px; }
+:root[data-look="modern"] .hr-plist { padding: 8px; gap: 3px; }
+:root[data-look="modern"] .hr-plist-item { padding: 10px 12px; border-radius: 12px; }
+:root[data-look="modern"] .hr-plist-item.is-on { background: var(--eco-surface); border-color: var(--eco-line); box-shadow: var(--eco-card-shadow); }
+:root[data-look="modern"] .hr-plist-item > div { flex: 1; min-width: 0; }
+:root[data-look="modern"] .hr-tile { border-radius: var(--eco-radius-lg); border-top-width: 1px; box-shadow: var(--eco-card-shadow); padding: 18px 20px; }
+:root[data-look="modern"] .hr-tile.is-ok .hr-tile-icon { background: var(--eco-ok-soft); color: var(--eco-ok); }
+:root[data-look="modern"] .hr-tile.is-bad .hr-tile-icon { background: var(--eco-bad-soft); color: var(--eco-bad); }
+:root[data-look="modern"] .hr-kpi-row { padding: 0 var(--eco-page-pad) 12px; border-bottom: 0; background: transparent; gap: 16px; }
+:root[data-look="modern"] .hr-quick { height: 36px; border-radius: var(--eco-radius-pill); }
+:root[data-look="modern"] .hr-day, :root[data-look="modern"] .hr-q { border-radius: 8px; }
+:root[data-look="modern"] .hr-fieldset legend { font-size: 11.5px; letter-spacing: .06em; font-weight: 600; }
+:root[data-look="modern"] .hr-perm-group { border-radius: 12px; }
+:root[data-look="modern"] .hr-attendance { padding: 0; }
+/* the front door in the modern look: Mizan's airy sign-in with the coloured rails */
+:root[data-look="modern"] .hr-door-main { background: var(--eco-surface); overflow: hidden; }
+:root[data-look="modern"] .hr-door-card { position: relative; z-index: 2; padding: 28px; border: 1px solid var(--eco-line); border-radius: var(--eco-radius-xl);
+  background: color-mix(in srgb, var(--eco-surface) 92%, transparent); box-shadow: var(--eco-shadow-dialog); backdrop-filter: blur(6px); }
+:root[data-look="modern"] .hr-door-card h2 { font-size: 26px; font-weight: 700; letter-spacing: -.03em; }
+:root[data-look="modern"][dir="rtl"] .hr-door-card h2 { letter-spacing: 0; }
+:root[data-look="modern"] .hr-door-form .eco-input, :root[data-look="modern"] .hr-door-form .eco-select { height: 40px; }
+:root[data-look="modern"] .hr-door-tools { z-index: 3; }
+:root[data-look="modern"] .hr-door-brand h1 { font-size: 36px; letter-spacing: -.04em; }
+:root[data-look="modern"][dir="rtl"] .hr-door-brand h1 { letter-spacing: 0; }
+.hr-decor { display: none; }
+:root[data-look="modern"] .hr-decor { display: block; position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
+.hr-decor path { fill: none; stroke-width: 1.4; opacity: .85; }
+:root[dir="rtl"] .hr-decor { transform: scaleX(-1); }
