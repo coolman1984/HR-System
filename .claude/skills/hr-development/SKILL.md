@@ -38,7 +38,7 @@ The eco publisher is compiled in but not started by the product yet; phase 4 bin
 | `hr_core/home.py`, `hr_core/version.py` | Installation home, settings, company identity; product and data versions | The company id is set once (ADR-HR-006) |
 | `hr_core/upgrade.py` | Data-version steps, pre-update backup, put back, resume; recovery installer | A new data shape = a new step + a planted bug |
 | `hr_core/attendance.py` | The engine behind the sign-in, its rights, Excel detection | Never edit the engine to change this |
-| `hr_core/web.py`, `hr_core/web/` | Screens (one page, plain JS), `hr_core/web/i18n/en.json` + `hr_core/web/i18n/ar.json`, setup mode | Every text through `t()`; both dictionaries, same keys |
+| `hr_core/web.py`, `hr_core/web/` | Screens: one application shell (`app.js`, `hr.css`) built from the ecosystem kit `hr_core/web/eco-ui/` (unchanged copy of GMES `packages/eco-ui/src`, pinned in `hr_core/eco_ui_pin.json`), `hr_core/web/i18n/en.json` + `hr_core/web/i18n/ar.json`, setup mode | Every text through `t()`; both dictionaries, same keys; never edit `eco-ui/` here |
 | `tools/build_windows.py`, `tools/make_assets.py`, `tools/make_icon.py`, `installer/hr-system.iss` | The Windows installer | CI job `windows-installer` must stay green |
 | `tools/installed_acceptance.py` | Acceptance of the installed program (Windows) | Python hidden, network blocked |
 | `hr_core/vendor/` | BAMS Ed25519, byte-for-byte, hash-pinned | Never edited here |

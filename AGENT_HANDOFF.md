@@ -11,8 +11,8 @@ You have no chat history. These files are the memory. Ten minutes, in this order
 
 ```handoff
 phase: 2.5
-stage: 2.5 one installable product
-updated: 2026-09-27
+stage: 2.5 one installable product + 2.6 product shell
+updated: 2026-09-28
 ```
 
 ## Where we are
@@ -23,6 +23,11 @@ server and one sign-in for everything, screens in English and Arabic, the attend
 data outside the program, company identity rules, data-version updates with a verified pre-update backup, a Windows
 installer built and accepted in CI. **Phase 3 (shifts) has not started.** Phase 2.5 still owes the owner's
 clean-PC run (Windows Sandbox, `docs/HR_DELIVERY.md` §5).
+
+**Phase 2.6 (UX, 2026-09-28):** the owner stopped all business features until the products look commercial. The screens
+are now one application shell built from the ecosystem's interface kit (`hr_core/web/eco-ui/`, the unchanged copy of
+GMES `packages/eco-ui/src`, pinned by SHA-256 in `hr_core/eco_ui_pin.json`). Waiting for: the owner's approval of the
+look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-acceptance.md`).
 
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
@@ -45,6 +50,9 @@ clean-PC run (Windows Sandbox, `docs/HR_DELIVERY.md` §5).
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
+0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his G-MES screenshot comparison to the TOKENS in
+   GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
+   **No shifts, skills or payroll until he approves.** Never edit `hr_core/web/eco-ui/` in this repository.
 1. Close phase 2.5: the CI job `windows-installer` is green (31/31 on b3d106d); still owed: the owner's clean-PC run in
    Windows Sandbox; mark phase 2.5 done in `docs/HR_SYSTEM_DESIGN.md` §7 and move the `phase` line here and in
    `STATUS.md` to 3.

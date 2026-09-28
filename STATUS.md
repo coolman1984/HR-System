@@ -9,8 +9,17 @@ written next to it · **Planned** = designed, no code · **Design only** = archi
 
 ## Current stage
 
-**Phase 2.5 — HR-System as one installable product** (`docs/HR_DELIVERY.md`). Phase 3 (shifts) waits until this
-gate is closed. Stage 3.0 (the continuity documents and their guard) is done and merged.
+**Phase 2.5 — HR-System as one installable product** (`docs/HR_DELIVERY.md`), and beside it **phase 2.6 — the
+product shell (UX)**: the owner stopped business features (shifts, skills, payroll, new MES modules) until the screens
+look and feel like a commercial HR product and he approves them. Phase 3 (shifts) waits for both gates. Stage 3.0 (the
+continuity documents and their guard) is done and merged.
+
+**Phase 2.6 (UX) — where it stands:** the screens were rebuilt as one application shell on the ecosystem's interface
+kit (`hr_core/web/eco-ui/`, copied unchanged from GMES `packages/eco-ui/src` and pinned in `hr_core/eco_ui_pin.json`):
+sign-in and first-run pages, dashboard, employees (search/filter conditions, dense grid, detail panel, bulk actions,
+editor dialog), organisation structure tree, jobs, positions, attendance, users, profiles and rights, audit, backups,
+system health, settings; English/Arabic, light/dark, compact/comfortable. Screenshots and the visual acceptance
+checklist: `docs/ux/`. **Exit gate:** the owner approves the visual shell (compared with his redacted G-MES screenshots).
 
 **Exit gate of phase 2.5:** installed from scratch on a clean Windows without Python and without internet; first
 administrator and sign-in; employee register; permissions; attendance with the same numbers; backup, rehearsal and
@@ -37,6 +46,7 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | Module and edition map (`kernel`, `attendance`, `leave` built) | `hr_core/modules.py` | `TEST_HR_REGISTRY.py` |
 | Documentation guard | `TEST_DOCS_CURRENT.py` | itself, and its planted bugs in `migration/mutations.py` |
 | One product (phase 2.5): one server, one port, one sign-in; screens for employees and organisation, attendance, users and permissions, backups, system health, settings; English and Arabic dictionaries with the same keys | `hr_main.py`, `hr_core/app.py`, `hr_core/web.py`, `hr_core/web/`, `hr_core/api.py` | `TEST_HR_DELIVERY.py` |
+| The product shell (phase 2.6, UX): one application shell built from the ecosystem's interface kit (menu tree, screen search, tabs, standard screen, dense grid, dialogs); the kit is the unchanged, hash-pinned copy from GMES; server values written as text only | `hr_core/web/app.js`, `hr_core/web/hr.css`, `hr_core/web/eco-ui/`, `hr_core/eco_ui_pin.json` | `TEST_HR_DELIVERY.py` (76), screenshots `docs/ux/` |
 | The locked attendance engine behind the same sign-in (`hr.attendance.read` / `hr.attendance.upload`), same golden numbers, uploads audited | `hr_core/attendance.py` | `TEST_HR_DELIVERY.py` |
 | Installation home outside the program, company identity from its owner (Mizan) or local and provisional, never changed silently | `hr_core/home.py`, `hr_core/registry.py` | `TEST_HR_DELIVERY.py` |
 | Data versions: verified pre-update backup kept forever, step-by-step update, put back on failure, resume after a power cut, newer data refused; one known-good recovery installer with its SHA-256 | `hr_core/upgrade.py`, `hr_core/version.py` | `TEST_HR_DELIVERY.py` |
@@ -48,7 +58,7 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | What | What exists | What is missing |
 |---|---|---|
 | Delivery to a customer | The Windows installer (phase 2.5) installs the whole product; `BUILD_PROJECT.py` still builds the old attendance ZIP as the engine's rollback line | A run on a truly clean PC (Windows Sandbox, `docs/HR_DELIVERY.md` §5); a code-signing certificate before selling (Windows shows "unknown publisher") |
-| Screens | Every phase-1/2 capability has a screen, in English and Arabic | The attendance dashboard is the locked engine's own page (English only); importing workbooks is still a command (`hr_registry.py import`) |
+| Screens | Every phase-1/2 capability has a screen in the new shell, in English and Arabic | The owner's approval of the look (phase 2.6 gate); the attendance dashboard is the locked engine's own page (English only, its own look); importing workbooks is still a command (`hr_registry.py import`); fonts are the system's |
 | Company identity | From Mizan at setup, or local and provisional | The adoption step (a local id later matched to Mizan's) is planned, not built |
 | Eco publisher in the product | Built and tested (`eco_publisher.py`) and compiled into the program | Not started by the installed program yet (no screen to configure `ECO_GMES_URL`) |
 | Leave | Linked to attendance days at import | Leave requests, approval and balances as an HR module |
@@ -125,8 +135,8 @@ open; `stage` is the step inside it; `updated` is the date of the session that l
 
 ```inventory
 phase: 2.5
-stage: 2.5 one installable product
-updated: 2026-09-27
+stage: 2.5 one installable product + 2.6 product shell
+updated: 2026-09-28
 done_phases: 1 2
 hr_core: api app attendance auth backup canonical device home importer journal modules registry service signing upgrade version web
 root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_main hr_registry hr_server
@@ -183,5 +193,5 @@ route: POST /api/admin/backups/([^/]+)/(verify|rehearse|restore)
 route: GET /api/info
 route: GET /api/admin/settings
 route: PUT /api/admin/settings
-mutations: 59
+mutations: 62
 ```

@@ -8,6 +8,38 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-28 — Phase 2.6 (UX): the product shell before any new business feature
+- **What:** the owner stopped shifts, skills and payroll until HR-System looks and feels like a commercial HR product.
+  The screens (`hr_core/web/app.js`, `hr_core/web/hr.css`) were rebuilt as one application shell on the ecosystem's
+  interface kit, built in GMES (`packages/eco-ui/src`, GMES ADR-029) and copied here unchanged into `hr_core/web/eco-ui/`
+  with a SHA-256 pin (`hr_core/eco_ui_pin.json`): sign-in and first-run pages, dashboard, employees (conditions, dense
+  grid, detail panel, bulk actions, grouped editor), organisation tree, jobs, positions, attendance, users, profiles and
+  rights, audit, backups, health, settings; English/Arabic, light/dark. `TEST_HR_DELIVERY.py` 76 checks; 3 new planted
+  bugs (62). Screenshots and the visual acceptance checklist: `docs/ux/`.
+- **Why:** a strong backend that looks primitive does not sell; the owner wants one design system, not styled pages.
+
+### The kit is shared, so a local fix would be a fork
+- **Symptom:** while polishing HR screens, small kit fixes (a quick filter, a reset icon, chart scaling) were needed.
+- **Cause:** the kit lives in GMES; editing the HR copy would make two kits that drift, exactly like two copies of a
+  security algorithm (L14).
+- **Fix:** every kit change was made in GMES and copied back; a test compares the copy with the pinned hashes and a
+  planted bug (a changed token) must be caught.
+- **Lesson:** a shared file has one home; the others hold a pinned copy and a test that refuses any other.
+
+### Screenshots hide what only a person's hands find
+- **Symptom:** every screenshot looked right, yet a browser run found the quick filter returning nothing for a name in
+  a hidden column, and the org tree opening with the selected department collapsed out of sight.
+- **Cause:** screenshots show states, not interactions; the filter searched visible columns only, the tree opened roots only.
+- **Fix:** the filter searches every column; the tree opens every unit that has children; interactions are driven in a
+  real browser (sort, hide + reload, quick filter, saved filter, required-condition refusal, screen search, tab close, export).
+- **Lesson:** review a screen by using it, not only by looking at it.
+
+### The dashboard chart scaled its text with its bars
+- **Symptom:** on a wide card the department chart's labels became huge and stretched.
+- **Cause:** the SVG was drawn narrow and stretched without keeping its proportions.
+- **Fix:** uniform scaling and a drawing width close to the card's (kit `barChart({ width })`).
+- **Lesson:** never stretch a drawing that carries text.
+
 ## 2026-09-27 — Phase 2.5: HR-System becomes one installable product
 - **What:** one server and one sign-in for everything (`hr_main.py`, `hr_core/app.py`, `hr_core/web.py`), screens in
   English and Arabic (`hr_core/web/`), the locked attendance engine behind the same sign-in (`hr_core/attendance.py`,

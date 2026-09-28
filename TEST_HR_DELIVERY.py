@@ -434,7 +434,16 @@ used = set(re.findall(r'\bt\("([a-z_]+(?:\.[a-z_]+)+)"', js))
 check("every_text_on_the_screens_is_translated", used and used <= set(en), sorted(used - set(en)))
 from hr_core.auth import PERMISSIONS  # noqa: E402
 check("every_permission_has_a_translated_name", all(f"perm.{p}" in en for p in PERMISSIONS), [p for p in PERMISSIONS if f"perm.{p}" not in en])
-check("the_screens_write_server_values_as_text_only", "innerHTML" not in js and "insertAdjacentHTML" not in js and "document.write" not in js)
+web_js = {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8") for p in (ROOT / "hr_core/web").rglob("*.js")}
+check("the_screens_write_server_values_as_text_only", all(not re.search(r"\.innerHTML|outerHTML\s*=|insertAdjacentHTML|document\.write|\beval\(|new Function\(", src)
+                                                       for src in web_js.values()), [n for n, src in web_js.items() if "insertAdjacentHTML" in src or "innerHTML" in src])
+named = set(re.findall(r'"((?:nav|g|sec|perm_group|door)\.[a-z_]+)"', js))
+check("every_menu_and_section_name_is_translated", named and named <= set(en), sorted(named - set(en)))
+import hashlib  # noqa: E402
+pin = json.load(open(ROOT / "hr_core/eco_ui_pin.json", encoding="utf-8"))
+kit = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "hr_core/web/eco-ui").iterdir()}
+check("the_interface_kit_is_the_unchanged_copy_from_gmes", kit == pin["files"] and len(pin["commit"]) == 40,
+      sorted(k for k in set(kit) | set(pin["files"]) if kit.get(k) != pin["files"].get(k)))
 import importlib.util  # noqa: E402  (tools/ is not a package; loaded by path so CHECK_ENVIRONMENT sees no import)
 _spec = importlib.util.spec_from_file_location("make_assets", ROOT / "tools" / "make_assets.py")
 make_assets = importlib.util.module_from_spec(_spec)

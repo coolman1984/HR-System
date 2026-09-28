@@ -43,6 +43,9 @@ or from the owner. Add a line when something surprises you; never delete one, st
   back only when nobody but the update wrote since the backup.
 - **L32** The company id is everyone's namespace: it comes from its owner, and a registry refuses another one.
 - **L33** Values in signed canonical documents must fit their rules (integers up to 2^53: nanoseconds do not).
+- **L35** Review screens by using them in a real browser, not only by looking at screenshots.
+- **L36** Build screens from one kit (shell, standard screen, grid, dialog); a screen styled on its own is a bug.
+- **L37** A shared file has one home: the interface kit is changed in GMES and copied here with a pinned hash.
 
 ## Dependencies
 - **L13** Probe an optional native library by what it does, not by whether it imports: a broken `cryptography`

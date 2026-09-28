@@ -45,6 +45,9 @@ design only, checked against the code), the top of `HISTORY.md` and `docs/LESSON
 - Build payroll before employees, attendance, leave and overtime are stable (docs/HR_SYSTEM_DESIGN.md §6-7).
 - Touch `engine.py` / `calculation_engine.py` / `dashboard.html` / `PROJECT.json` for new modules: new work goes in `hr_core/` beside them.
 - Edit `eco_schemas/`: they are generated in `coolman1984/GMES/packages/eco-contracts` and copied here unchanged.
+- Edit `hr_core/web/eco-ui/` (the ecosystem's interface kit): it is changed in `coolman1984/GMES/packages/eco-ui/src`, then
+  copied here unchanged with a new `hr_core/eco_ui_pin.json`. Screens are built from the kit, not styled one by one.
+- Resume business features (shifts, skills, payroll) before the owner approves the product shell (phase 2.6, 2026-09-28).
 - Edit `hr_core/vendor/` (BAMS's signing code, byte-for-byte, hash-pinned) or keep a second, modified copy of any
   security algorithm. Fixes go to BAMS first, then are copied here unchanged (ADR-HR-002).
 - Reach the registry or the accounts from a new entrance without `hr_core/service.py` (`require()` + audit), or
