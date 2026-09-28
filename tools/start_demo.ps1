@@ -21,6 +21,6 @@ if ($Reset -or -not (Test-Path (Join-Path $Folder '.hr-demo'))) {
 $env:HR_HOME = $Folder
 Write-Host ''
 Write-Host "HR-System DEMO  ->  http://127.0.0.1:$Port/" -ForegroundColor Green
-Write-Host '  Sign in: admin / Demo-2026!admin      Other users (mona.hassan, karim.adel, omar.farouk ...): Demo-2026!pass'
+Write-Host '  Sign in: admin / 123     Other users (mona.hassan, karim.adel, omar.farouk ...): Demo-2026!pass'
 Write-Host '  Close this window to stop the demo.'
 & $python hr_main.py --port $Port

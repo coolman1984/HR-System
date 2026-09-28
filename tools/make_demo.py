@@ -33,7 +33,8 @@ if os.path.join(ROOT, "vendor.zip") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "vendor.zip"))  # openpyxl for the attendance workbooks
 DATASET = os.path.join(ROOT, "inputs", "hr-factory-synthetic-dataset", "01_CLEAN_BASELINE")
 MARKER = ".hr-demo"
-ADMIN = ("admin", "Mariam Fouad", "Demo-2026!admin")
+ADMIN = ("admin", "Mariam Fouad", "123")  # demo sign-in; shorter than the product allows, so written directly after install
+INSTALL_PASSWORD = "Demo-2026!admin"
 PASSWORD = "Demo-2026!pass"
 TODAY = date.today()
 HISTORY_FROM = date(2026, 6, 1) if TODAY > date(2026, 7, 1) else TODAY - timedelta(days=60)
@@ -126,9 +127,10 @@ def build(folder):
 
     product = Product(Home(folder))
     product.home.set(language="en", backup_hours=6, autostart=False)
-    product.install({"source": "local", "code": "NILE", "name": "Nile Precision Industries"}, {"username": ADMIN[0], "display_name": ADMIN[1], "password": ADMIN[2]})
+    product.install({"source": "local", "code": "NILE", "name": "Nile Precision Industries"}, {"username": ADMIN[0], "display_name": ADMIN[1], "password": INSTALL_PASSWORD})
     svc = product.service
-    svc.auth.commit(ADMIN[0], "demo: first password kept", [{"entity": "user", "code": ADMIN[0], "fields": {"must_change": 0}, "expected_ver": svc.auth._get("user", ADMIN[0])["ver"]}])
+    from hr_core.auth import hash_password
+    svc.auth.commit(ADMIN[0], "demo: admin sign-in set to the demo password", [{"entity": "user", "code": ADMIN[0], "fields": {"pw": hash_password(ADMIN[2]), "must_change": 0}, "expected_ver": svc.auth._get("user", ADMIN[0])["ver"]}])
     _, admin = svc.login(ADMIN[0], ADMIN[2])
     reg = svc.registry
     log("installation made")

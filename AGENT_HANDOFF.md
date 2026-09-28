@@ -38,7 +38,7 @@ help on every screen. They were checked in Chrome over CDP on 2026-09-28 (demo i
 violations proposed from attendance, a separate right to decide, the law's limits, days never money; data version 3;
 `TEST_HR_DISCIPLINE.py`). New screens: Violations and penalties (`DSC2010`), Penalty schedule (`DSC1010`), Employee journey
 (`EMP2010`, time-lapse), Help center (`HLP1010`); F1 help panel, guided tours, guide mode. `Start-HR-Demo.bat` builds a
-separate demo installation (never a real one) at `..\HR-Demo` and starts it on port 8790 (admin / Demo-2026!admin; other
+separate demo installation (never a real one) at `..\HR-Demo` and starts it on port 8790 (admin / 123; other
 users Demo-2026!pass); the client story is Karim Abdelaziz (`E000900`), production manager hired 2026-06-15.
 
 ## Why we are here
