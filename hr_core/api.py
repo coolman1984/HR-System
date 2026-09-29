@@ -120,6 +120,59 @@ def make_handler(service, product=None):
     def schedule_swap(h, body, user):
         return 200, {"seq": service.swap(user, body.get("date", ""), body.get("a", ""), body.get("b", ""), body.get("reason", ""), h.ip)}
 
+    # -------------------------------------------------------------- what manufacturing tells HR (hr_core/eco_inbox.py, WP-H1)
+    holder = {}
+
+    def eco_inbox():
+        if "inbox" not in holder:
+            from .eco_inbox import EcoInbox
+            holder["inbox"] = EcoInbox(service.data_dir, service.registry.company_id)
+        return holder["inbox"]
+
+    @route("POST", "/eco/v1/inbox")
+    def eco_in(h, body, user):
+        name, refused = eco_inbox().caller(h.headers.get("x-eco-key"), "eco.inbox.write")
+        if refused:
+            raise HttpError(refused[0], refused[1], "a valid machine key with the scope eco.inbox.write is required")
+        events = body.get("events")
+        if not isinstance(events, list) or not 1 <= len(events) <= 500:
+            raise HttpError(400, "eco.events", "send 1 to 500 events")
+        return 200, {"results": [eco_inbox().receive(e) for e in events]}
+
+    @route("GET", "/api/admin/eco-keys")
+    def eco_keys(h, body, user):
+        service.require(user, "admin.settings.manage", h.ip, "eco-keys")
+        return 200, {"keys": eco_inbox().keys(), "inbox": eco_inbox().status()}
+
+    @route("POST", "/api/admin/eco-keys")
+    def eco_key_add(h, body, user):
+        service.require(user, "admin.settings.manage", h.ip, "eco-keys:create")
+        key = eco_inbox().create_key(body.get("name", ""), body.get("scopes") or ["eco.inbox.write"], user["code"])
+        service.journal.audit("security", "eco.key.created", user["code"], {"name": body.get("name", "")}, h.ip)
+        return 201, {"key": key, "note": "shown once: store it in the other application now"}
+
+    @route("POST", r"/api/admin/eco-keys/(\d+)/revoke")
+    def eco_key_revoke(h, body, user, key_id):
+        service.require(user, "admin.settings.manage", h.ip, "eco-keys:revoke")
+        eco_inbox().revoke(key_id)
+        service.journal.audit("security", "eco.key.revoked", user["code"], {"id": int(key_id)}, h.ip)
+        return 200, {"ok": True}
+
+    @route("GET", "/api/staffing/gap")
+    def staffing(h, body, user):
+        from . import scheduling
+        from .eco_inbox import staffing_gap
+        service.require(user, "hr.shifts.read", h.ip, "staffing")
+        first, last = h.query.get("from", ""), h.query.get("to", "")
+        days = scheduling.Schedule(service.registry).days(first, last)
+        skill_code = {s["id"]: s["code"] for s in service.registry.list("skill") if not s["deleted"]}
+        quals = {}
+        for q in service.registry.list("employee_skill"):
+            if not q["deleted"] and q.get("skill_id") in skill_code:
+                quals.setdefault(q["employee_id"], []).append({"skill": skill_code[q["skill_id"]], "level": int(q.get("level") or 0),
+                                                               "certified_on": q.get("certified_on") or "9999-12-31", "expires_on": q.get("expires_on")})
+        return 200, staffing_gap(eco_inbox().requirements(first, last, h.query.get("line") or None), days, quals)
+
     # -------------------------------------------------------------- accounts
     @route("GET", "/api/admin/users")
     def users(h, body, user):

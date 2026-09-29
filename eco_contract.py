@@ -3,7 +3,7 @@
 Standard library only, on purpose: CHECK_ENVIRONMENT.py treats every non-stdlib import in a
 top-level .py file as a runtime dependency of the application. It supports exactly the keywords
 the generated contract schemas use (type, properties, required, pattern, minLength, maxLength,
-minimum, maximum, exclusiveMinimum, const, enum, format) and FAILS LOUDLY on any other keyword, so a
+minimum, maximum, exclusiveMinimum, const, enum, format, items, minItems, maxItems) and FAILS LOUDLY on any other keyword, so a
 richer schema can never be half-checked in silence.
 """
 
@@ -13,7 +13,8 @@ from pathlib import Path
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "eco_schemas"
 KNOWN = {"$id", "$schema", "title", "type", "properties", "required", "pattern", "minLength", "maxLength",
-         "minimum", "maximum", "exclusiveMinimum", "const", "enum", "format", "additionalProperties", "description"}
+         "minimum", "maximum", "exclusiveMinimum", "const", "enum", "format", "additionalProperties", "description",
+         "items", "minItems", "maxItems"}
 _cache = {}
 
 
@@ -67,6 +68,14 @@ def errors(value, node, path="$"):
             out.append(f"{path}: above {node['maximum']}")
         if "exclusiveMinimum" in node and value <= node["exclusiveMinimum"]:
             out.append(f"{path}: must be above {node['exclusiveMinimum']}")
+    if isinstance(value, list):
+        if "minItems" in node and len(value) < node["minItems"]:
+            out.append(f"{path}: fewer than {node['minItems']} items")
+        if "maxItems" in node and len(value) > node["maxItems"]:
+            out.append(f"{path}: more than {node['maxItems']} items")
+        if "items" in node:
+            for i, item in enumerate(value):
+                out.extend(errors(item, node["items"], f"{path}[{i}]"))
     if isinstance(value, dict):
         for key in node.get("required", []):
             if key not in value:
