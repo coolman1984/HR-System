@@ -12,4 +12,6 @@ changes there and not here, that test fails (contract drift is caught, never dis
 | `eco.envelope.v1` | The CloudEvents-compatible envelope every ecosystem event travels in | ecosystem |
 | `eco.employee.v1` | Workforce master data (no personal data) | **HR-System** |
 | `eco.attendance_day.v1` | One employee's attendance for one work day | **HR-System** |
+| `eco.schedule_day.v1` | One employee's planned day (shift, times, rest day or leave), published today and 13 days ahead | **HR-System** |
+| `eco.qualification.v1` | One person's qualification for a skill (level, certified, expiry; a withdrawn one is inactive) | **HR-System** |
 | `canonical-v1.json` | Shared test vectors: canonical JSON and journal-line hash (ADR-026); must pass in Python and TypeScript | ecosystem |

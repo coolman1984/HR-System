@@ -20,7 +20,9 @@ The root `SKILL.md` describes only the migrated Excel attendance engine (it ship
 Startup order (hr_core/app.py): recover a lost history.db → `upgrade.prepare` (pre-update backup, steps, put back on
 failure, resume after power cut) → bind the engine → verify journal and audit → promote the recovery installer →
 automatic backups. Until the company is set, the server runs in setup mode (hr_core/web.py).
-The eco publisher is compiled in but not started by the product yet; phase 4 binds attendance to the registry.
+When Settings → Integration (GMES) holds an address, `hr_core/eco_link.py` publishes to GMES from a background
+thread (started on open, stopped on close; key in `data/node/gmes.key`, never in a backup); phase 4 binds attendance
+to the registry.
 
 ## File map
 | Path | Role | Change rule |
@@ -43,6 +45,7 @@ The eco publisher is compiled in but not started by the product yet; phase 4 bin
 | `tools/installed_acceptance.py` | Acceptance of the installed program (Windows) | Python hidden, network blocked |
 | `hr_core/vendor/` | BAMS Ed25519, byte-for-byte, hash-pinned | Never edited here |
 | `eco_publisher.py`, `eco_contract.py`, `eco_schemas/` | Contracts to GMES; schemas generated in GMES | Schemas copied unchanged |
+| `hr_core/eco_link.py` | The product's own link to GMES: settings `eco` in config.json, the key store (DPAPI), the read-only registry view, the background thread, `/api/admin/integration` | The key never leaves `data/node/`; each cycle opens its own connections in its own thread |
 | `migration/` | Golden behaviour and planted bugs (`migration/mutations.py`) | A new rule = a new planted bug |
 | `TEST_*.py` | Suites (list in `STATUS.md`); `TEST_DOCS_CURRENT.py` guards the documents | Every test runs in CI |
 
@@ -68,4 +71,6 @@ The eco publisher is compiled in but not started by the product yet; phase 4 bin
 - The product is the Windows installer; the old ZIP (`BUILD_PROJECT.py`) is only the engine's rollback line.
 - The engine binds to one data folder per process (on first import): tests that need two folders use subprocesses.
 - The engine keeps `history.db` open: copy it with the SQLite backup API under the attendance lock, never as a file.
+- The attendance audit line is written just after the engine's answer: a test waits for it (`attendance_events()`).
+- A secret (the GMES key) is never a setting; the API says only `key_set`.
 - More: `docs/LESSONS.md`.

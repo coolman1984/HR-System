@@ -1491,12 +1491,63 @@ function settingsScreen({ shell }) {
             onChange: (d) => { ui.prefs.set("density", d); ui.configure({ density: d }); window.dispatchEvent(new Event("eco-refresh")); } })),
           ui.field(ui.kitText("language"), ui.segmented({ value: S.lang, options: [["en", "English"], ["ar", "العربية"]], onChange: setLanguage }))) }),
         ui.card({ title: t("settings.company"), subtitle: t("settings.company_sub"), icon: "building", body: h("div", { class: "hr-stack" }, ui.props([[t("setup.company_name"), c.name], [t("field.code"), c.code ? ui.ltr(c.code) : null],
-          [t("setup.source"), c.source ? t("company.source." + c.source) : null]]), c.provisional ? ui.banner("warn", t("company.provisional_help")) : null) }));
+          [t("setup.source"), c.source ? t("company.source." + c.source) : null]]), c.provisional ? ui.banner("warn", t("company.provisional_help")) : null) }),
+        ui.card({ title: t("eco.title"), subtitle: t("eco.sub"), icon: "link", body: eco }));
+      loadEco();
     } catch (e) { ui.clear(body, ui.banner("bad", e.message)); }
   }
   async function store() {
     try { await api("PUT", "/api/admin/settings", { autostart: auto.querySelector("input").checked, language: lang.value_, backup_hours: Number(hours.value) }); ui.toast({ kind: "ok", title: t("saved") }); }
     catch (e) { fail(e); }
+  }
+  // Integration (GMES): the product publishes HR's workforce truth to manufacturing by itself. The key is write-only:
+  // the server answers only whether one is stored ("set" / "not set"), never the key.
+  const eco = h("div", { class: "hr-stack" });
+  let ecoUrl, ecoNode, ecoEvery, ecoKey, ecoClear;
+  const when = (v) => (v ? ui.ltr(String(v).slice(0, 19).replace("T", " ")) : t("none"));
+  async function loadEco() {
+    let x;
+    try { x = await api("GET", "/api/admin/integration"); } catch (e) { ui.clear(eco, ui.banner("bad", e.message)); return; }
+    ecoUrl = ui.input({ value: x.gmes_url, placeholder: "http://127.0.0.1:4700", dir: "ltr" });
+    ecoNode = ui.input({ value: x.node, dir: "ltr", width: "200px" });
+    ecoEvery = ui.input({ type: "number", value: x.interval_seconds, min: "10", max: "3600", width: "120px" });
+    ecoKey = ui.input({ type: "password", value: "", dir: "ltr", autocomplete: "new-password", placeholder: x.key_set ? t("eco.key_keep") : t("eco.key_enter") });
+    ecoClear = x.key_set ? ui.checkbox({ label: t("eco.key_clear") }) : null;
+    const ob = x.outbox || {}, last = x.last;
+    const state = !x.enabled ? ui.statusChip("neutral", t("eco.off")) : x.running ? ui.statusChip("ok", t("eco.running")) : ui.statusChip("bad", t("eco.stopped"));
+    const key = x.key_set ? ui.badge(t("eco.key_set"), "ok", "key") : ui.badge(x.key_unreadable ? t("eco.key_unreadable") : t("eco.key_not_set"), "warn", "key");
+    ui.clear(eco,
+      ui.banner("info", t("eco.alone")),
+      h("div", { class: "hr-row" }, state, key),
+      ui.field(t("eco.url"), ecoUrl, { hint: t("eco.url_hint") }),
+      ui.field(t("eco.node"), ecoNode, { hint: t("eco.node_hint") }),
+      ui.field(t("eco.interval"), ecoEvery, { hint: t("eco.interval_hint") }),
+      ui.field(t("eco.key"), ecoKey, { hint: t("eco.key_hint") }), ecoClear,
+      h("div", { class: "hr-kpi-row" },
+        ui.kpi({ label: t("eco.pending"), value: String(ob.pending || 0), icon: "clock", status: ob.pending ? "idle" : null }),
+        ui.kpi({ label: t("eco.delivered"), value: String(ob.delivered || 0), icon: "check" }),
+        ui.kpi({ label: t("eco.rejected"), value: String(ob.rejected || 0), icon: "alert", status: ob.rejected ? "down" : null })),
+      ui.props([[t("eco.last_delivery"), when(x.last_delivered_at)], [t("eco.last_run"), last ? when(last.at) : t("none")],
+        last ? [t("eco.last_counts"), t("eco.counts", { staged: String(last.staged || 0), sent: String(last.sent || 0), delivered: String(last.delivered || 0), rejected: String(last.rejected || 0) })] : null,
+        last && last.stopped_by ? [t("eco.stopped_by"), last.stopped_by] : null, last && last.error ? [t("problem"), last.error] : null]),
+      h("div", { class: "hr-row" }, ui.button({ label: t("eco.save"), icon: "save", kind: "primary", onClick: () => storeEco() }),
+        ui.button({ label: t("eco.send_now"), icon: "arrow-up", disabled: !x.enabled, onClick: () => sendEco() })));
+  }
+  async function storeEco() {
+    const fields = { gmes_url: ecoUrl.value.trim(), node: ecoNode.value.trim(), interval_seconds: Number(ecoEvery.value) };
+    if (ecoKey.value) fields.key = ecoKey.value;
+    if (ecoClear && ecoClear.querySelector("input").checked) fields.clear_key = true;
+    try { await api("PUT", "/api/admin/integration", fields); ecoKey.value = ""; ui.toast({ kind: "ok", title: t("saved") }); loadEco(); }
+    catch (e) { fail(e); }
+  }
+  async function sendEco() {
+    ui.toast({ kind: "info", text: t("working") });
+    try {
+      const r = await api("POST", "/api/admin/integration/run");
+      const bad = r.stopped_by || r.error;
+      ui.toast({ kind: bad ? "bad" : "ok", title: bad ? t("eco.not_sent") : t("eco.sent"), text: bad ? String(bad) : t("eco.counts", { staged: String(r.staged || 0), sent: String(r.sent || 0), delivered: String(r.delivered || 0), rejected: String(r.rejected || 0) }), keep: !!bad });
+      loadEco();
+    } catch (e) { fail(e); }
   }
   load();
   return { el: sc.el };

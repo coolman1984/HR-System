@@ -47,7 +47,7 @@ def tool(home, argv):
         return 0
     product = Product(home)
     try:
-        svc = product.open()
+        svc = product.open(link=False)  # a maintenance command never publishes
         if cmd in ("status", "health"):
             h = svc.health()
             h.update(product.health_extra())

@@ -14,9 +14,9 @@ backups (HISTORY.md, 2026-09-27).
 |---|---|
 | One file | `HR-System-Setup-<version>.exe`: installs on a new PC, updates an installed one (same file) |
 | Program | `C:\Program Files\HR-System\HR-System.exe`: compiled (Nuitka), its own Python runtime, openpyxl and `cryptography` inside; no readable program source (the one exception is `CUSTOM_RULES.py`, the attendance engine's documented customisation hook) |
-| Data | `%ProgramData%\HR-System\`: `config.json`, `data\` (journal, tables, accounts, attendance history, device identity), `backups\`, `recovery\`, `logs\`. Kept on update and on removal. Readable only by SYSTEM, the Administrators and the account that installed and runs the server (not by other users of the PC) |
+| Data | `%ProgramData%\HR-System\`: `config.json`, `data\` (journal, tables, accounts, attendance history, device identity, the protected GMES key, the outbox to GMES), `backups\`, `recovery\`, `logs\`. Kept on update and on removal. Readable only by SYSTEM, the Administrators and the account that installed and runs the server (not by other users of the PC) |
 | Start | Start menu and optional desktop icon; "start with Windows" (for the installing person, who runs the server) is offered and ticked by default, and can be switched off in Settings |
-| Entry | One address, one sign-in: `http://127.0.0.1:8766/` — employees and organisation, attendance, users and permissions, backups, system health, settings |
+| Entry | One address, one sign-in: `http://127.0.0.1:8766/` — employees and organisation, attendance, users and permissions, backups, system health, settings (including the link to GMES, off until an address is set) |
 | Old attendance program | On a first install the installer offers to COPY the old program's `data\history.db` (the old folder stays as it was) |
 | Microsoft Excel | Not assumed: the installer and the health screen say whether it is there; only protected, damaged or old-format (.xls/.xlsb) workbooks need it, and without Excel such a file is refused at once with a plain message instead of waiting for Excel |
 | Languages | English and Arabic screens (right-to-left); the attendance dashboard itself stays English (locked engine) |
@@ -77,10 +77,42 @@ backups (HISTORY.md, 2026-09-27).
   audit. Only one is kept; a pending copy of another version or with a wrong hash is discarded.
 - **Rejected.** Migrating on install (the installer cannot verify the journal); keeping every old installer.
 
+### ADR-HR-008 — The installed product publishes to GMES by itself, set on a screen (ecosystem plan, Phase A)
+- **Decision.** Settings → *Integration (GMES)* (`SYS9060`, administrators with `admin.settings.manage`) sets the section
+  `eco` of `config.json`:
+
+  | Setting | Default | Rule |
+  |---|---|---|
+  | `gmes_url` | empty | empty = the link is off and HR works on its own; otherwise `http://` or `https://` with a host, no user or password, no query |
+  | `node` | `hr-main` | 1-40 letters, digits, dot, dash, underscore; the sender `eco://<company>/hr/<node>` |
+  | `interval_seconds` | 60 | 10 to 3600 |
+
+  `hr_core/eco_link.py` runs `eco_publisher.py`'s outbox and delivery in a background thread: started by
+  `Product.open()` when an address is set, stopped by `Product.close()`, restarted when the settings change; "Send now"
+  runs one cycle at once. Each cycle opens its own connections in its own thread: the outbox, and the registry
+  **read-only** (`hr.db` with `mode=ro`; opening `Registry` would open the journal and may repair on open). The screen
+  shows the last delivery, the last attempt and what is pending, delivered and refused; a cycle that did or failed
+  something is one line in `logs\eco-link.log`. Maintenance commands (`HR-System.exe tool ...`) never publish.
+- **The GMES key is a secret, not a setting.** It is kept in `data\node\gmes.key` beside `device.key`: protected with the
+  Windows Data Protection API (DPAPI, machine scope, so a copy of the folder on another PC cannot read it; the key is
+  then shown as "cannot be read on this computer, enter it again"), and as a plain owner-only file (mode 0600) on other
+  systems. Backups copy named databases and the public `device.json` only, so the key never lands in a backup; the API
+  answers `key_set` (true/false), never the key; the audit records `key: changed | removed | unchanged`. The key field on
+  the screen is write-only: leaving it empty keeps the stored key.
+- **Routes.** `GET /api/admin/integration` (settings, `key_set`, `running`, last report, outbox counts),
+  `PUT /api/admin/integration` (`gmes_url`, `node`, `interval_seconds`, optional `key`, optional `clear_key`; everything is
+  checked before anything is written; audited as `integration.changed`), `POST /api/admin/integration/run` (one cycle
+  now, returns its report; audited as `integration.sent`). All need `admin.settings.manage`.
+- **Kept.** `python eco_publisher.py --once | --loop N` with `ECO_COMPANY_ID`, `ECO_GMES_URL`, `ECO_GMES_KEY`,
+  `ECO_NODE`, `EXCEL_APP_DATA_DIR` works unchanged (a manual second way; do not run both against one outbox at once).
+- **Rejected.** The key in `config.json` (it would travel with every copy of the settings); returning a masked key
+  (nothing to gain, one more thing to leak); a second process or a Windows service for publishing (one program to
+  start and to secure).
+
 ## 3. Tests
 | What | Where |
 |---|---|
-| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages | `TEST_HR_DELIVERY.py` (74 checks) and 18 planted bugs in `migration/mutations.py` |
+| Product logic (any OS): setup, identity, one server, attendance equivalence, permissions, backups with the attendance history, lost history, update, failure, power cut, recovery installer, start with Windows, languages, the link to GMES (off by default, started on open, delivery into a fake GMES inbox, GMES down then back, the key never in the API, `config.json`, a backup, a log or the audit, validation, rights) | `TEST_HR_DELIVERY.py` (96 checks) and its planted bugs in `migration/mutations.py` |
 | The installed program on Windows: no Python visible, outbound network blocked, install with the old attendance history, first administrator, register, permissions, attendance, backup/rehearsal/restore, restart, update over the installed version, failure and power cut in the middle of an update, removal keeps the data | `tools/installed_acceptance.py` in the CI job `windows-installer` |
 
 ## 4. Limits, said plainly

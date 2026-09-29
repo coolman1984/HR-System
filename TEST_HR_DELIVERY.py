@@ -182,10 +182,21 @@ check("attendance_through_the_one_server_gives_the_golden_numbers", s == 200 and
 rows = sorted(P.attendance.engine.current_rows(), key=lambda r: json.dumps(r, sort_keys=True, default=str))
 check("attendance_rows_are_the_golden_rows", hashlib.sha256(json.dumps(rows, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
       == golden["_current_rows_sha256"])
-check("an_upload_is_audited_with_its_person", any(a["event"] == "attendance.uploaded" and a["actor"] == "officer1" for a in P.service.journal.audit_entries("activity", 50)))
+def attendance_events(at_least):
+    """The attendance lines of the audit. The server writes them just AFTER the engine's answer went out, so a fast
+    client can look before they exist (seen on Windows, 2026-09-28): wait until `at_least` are there (15 s at most)."""
+    deadline = time.time() + 15
+    while True:
+        found = [a for a in P.service.journal.audit_entries("activity", 50) if a["event"].startswith("attendance.")]
+        if len(found) >= at_least or time.time() > deadline:
+            return found
+        time.sleep(0.05)
+
+
+check("an_upload_is_audited_with_its_person", any(a["event"] == "attendance.uploaded" and a["actor"] == "officer1" for a in attendance_events(1)))
 s, out, _ = officer.call("POST", "/api/upload?filename=05_Time_Attendance_Leave.xlsx", raw=CLEAN.read_bytes())
 s2, out2, _ = officer.call("POST", "/api/upload?filename=broken.csv", raw=b"\xff\xfe not a table")
-events = [a for a in P.service.journal.audit_entries("activity", 50) if a["event"].startswith("attendance.")]
+events = attendance_events(3)
 check("a_refused_or_duplicate_upload_is_not_recorded_as_a_change", out.get("duplicate_upload") and s2 == 400
       and sum(1 for a in events if a["event"] == "attendance.uploaded") == 1 and sum(1 for a in events if a["event"] == "attendance.refused") == 2,
       [(a["event"], a["detail"]) for a in events])  # Codex review, PR 4
@@ -241,12 +252,128 @@ finally:
 check("a_backup_waits_for_a_running_upload", "hr_journal.db" in copies and not copied_during_upload
       and finished and "history.db" in finished[0]["manifest"]["files"], copies)
 
+# ------------------------------------------------------------------ the link to manufacturing (GMES), set on a screen
+# Ecosystem plan, Phase A: the installed product publishes by itself (hr_core/eco_link.py). A fake GMES inbox stands in
+# for GMES (the real one is exercised by GMES's own end-to-end test); the product's own path is used throughout.
+import socket  # noqa: E402
+from http.server import BaseHTTPRequestHandler  # noqa: E402
+
+GMES_KEY = "gk_Phase-A-integration-7f3c91e2"  # distinctive: searched for in every place it must never be
+
+
+class GmesInbox(BaseHTTPRequestHandler):
+    seen, keys, sources = set(), [], set()
+
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        GmesInbox.keys.append(self.headers.get("x-eco-key"))
+        events = json.loads(self.rfile.read(int(self.headers["content-length"])))["events"]
+        results = []
+        for ev in events:
+            GmesInbox.sources.add(ev["source"])
+            results.append({"id": ev["id"], "result": "duplicate" if ev["id"] in GmesInbox.seen else "applied"})
+            GmesInbox.seen.add(ev["id"])
+        data = json.dumps({"results": results}).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def closed_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+s, st, _ = admin.call("GET", "/api/admin/integration")
+check("integration_is_off_by_default_hr_works_alone", s == 200 and st["gmes_url"] == "" and not st["enabled"] and not st["running"]
+      and not st["key_set"] and P.link is not None and not P.link.running and not os.path.exists(os.path.join(H.data, "eco_outbox.db")), st)
+s, out, _ = admin.call("POST", "/api/admin/integration/run")
+check("send_now_without_an_address_is_refused", s == 400 and out["error"] == "integration.disabled", out)
+answers = [viewer.call(m, p, b)[0] for m, p, b in (("GET", "/api/admin/integration", None), ("PUT", "/api/admin/integration", {"gmes_url": "http://127.0.0.1:1", "key": GMES_KEY}),
+                                                   ("POST", "/api/admin/integration/run", {}))] + [anon.call("GET", "/api/admin/integration")[0]]
+check("integration_needs_the_settings_right", answers == [403, 403, 403, 401] and H.config()["eco"]["gmes_url"] == "" and not P.link.keys.exists(), answers)
+wrong = [({"gmes_url": "ftp://gmes.local"}, "config.eco_url"), ({"gmes_url": "http://user:secret@gmes.local"}, "config.eco_url"),
+         ({"gmes_url": "gmes.local:4700"}, "config.eco_url"), ({"gmes_url": "http://gmes.local:99999"}, "config.eco_url"),
+         ({"interval_seconds": 9}, "config.eco_interval"), ({"interval_seconds": 3601}, "config.eco_interval"), ({"interval_seconds": "often"}, "config.eco_interval"),
+         ({"node": "hr main"}, "config.eco_node"), ({"key": "has a space"}, "integration.key"), ({"surprise": 1}, "config.field"),
+         ({"gmes_url": "http://127.0.0.1:4700", "key": "bad key"}, "integration.key")]
+got = [(admin.call("PUT", "/api/admin/integration", body)[1] or {}).get("error") for body, _ in wrong]
+check("integration_settings_are_validated_and_a_refusal_writes_nothing", got == [code for _, code in wrong]
+      and H.config()["eco"] == {"gmes_url": "", "node": "hr-main", "interval_seconds": 60} and not P.link.keys.exists() and not P.link.running, got)
+
+# GMES down: the address is saved, the link starts, everything waits in the outbox (the 200 attendance days uploaded above;
+# no employee file was uploaded and the registry is empty, so no employee is invented)
+down_url = f"http://127.0.0.1:{closed_port()}"
+s, st, _ = admin.call("PUT", "/api/admin/integration", {"gmes_url": down_url + "/", "node": "hr-test", "interval_seconds": 3600, "key": GMES_KEY})
+check("an_address_from_the_screen_starts_the_link", s == 200 and st["running"] and st["enabled"] and st["key_set"] and st["gmes_url"] == down_url
+      and st["node"] == "hr-test" and H.config()["eco"]["interval_seconds"] == 3600, st)
+check("the_api_never_returns_the_gmes_key", "key" not in st and GMES_KEY not in json.dumps(st), sorted(st))
+s, rep, _ = admin.call("POST", "/api/admin/integration/run")
+check("gmes_down_everything_waits_in_the_outbox", s == 200 and "stopped_by" in rep and rep["outbox"].get("pending", 0) >= 200
+      and not rep["outbox"].get("delivered"), rep)
+
+# GMES comes back: the product delivers by itself (the thread's first cycle runs when it starts), with the stored key
+inbox = ThreadingHTTPServer(("127.0.0.1", 0), GmesInbox)
+threading.Thread(target=inbox.serve_forever, daemon=True).start()
+s, st, _ = admin.call("PUT", "/api/admin/integration", {"gmes_url": f"http://127.0.0.1:{inbox.server_address[1]}", "key": ""})
+check("an_empty_key_field_keeps_the_stored_key", s == 200 and st["key_set"] and st["running"], st)
+deadline = time.time() + 120
+while time.time() < deadline and not (P.link.last and P.link.last.get("sent") and not P.link.last.get("outbox", {}).get("pending")):
+    time.sleep(0.2)
+s, st, _ = admin.call("GET", "/api/admin/integration")
+check("the_product_delivers_by_itself_when_gmes_is_back", s == 200 and st["outbox"].get("pending", 0) == 0 and st["outbox"].get("delivered", 0) >= 200
+      and st["last_delivered_at"] and st["last"]["origin"] == "automatic" and len(GmesInbox.seen) >= 200, st)
+check("gmes_receives_the_stored_key_and_this_node", set(GmesInbox.keys) == {GMES_KEY}
+      and GmesInbox.sources == {f"eco://{MIZAN_COMPANY}/hr/hr-test"}, (len(GmesInbox.keys), GmesInbox.sources))
+s, rep, _ = admin.call("POST", "/api/admin/integration/run")
+check("send_now_sends_nothing_twice", s == 200 and rep["sent"] == 0 and rep["staged"] == 0 and "stopped_by" not in rep and "error" not in rep, rep)
+audited = [a for a in P.service.journal.audit_entries(None, 500) if a["event"] in ("integration.changed", "integration.sent")]
+check("integration_changes_and_sends_are_audited_without_the_key",
+      any(a["event"] == "integration.changed" and a["actor"] == "admin1" and a["detail"]["key"] == "changed" for a in audited)
+      and any(a["event"] == "integration.sent" for a in audited) and GMES_KEY not in json.dumps(audited), audited[:2])
+s, made, _ = admin.call("POST", "/api/admin/backups")
+key_file = os.path.realpath(P.link.keys.path)
+leaks = []
+for folder, _, names in os.walk(H.path):
+    for name in names:
+        path = os.path.join(folder, name)
+        if os.path.realpath(path) != key_file:
+            try:
+                if GMES_KEY.encode() in open(path, "rb").read():
+                    leaks.append(os.path.relpath(path, H.path))
+            except OSError:
+                pass
+check("the_gmes_key_is_never_in_config_logs_audit_or_a_backup", s == 201 and not leaks and os.path.isfile(key_file)
+      and os.path.relpath(key_file, os.path.realpath(H.data)) == os.path.join("node", "gmes.key")
+      and not [n for n in os.listdir(os.path.join(H.backups, made["name"])) if "gmes" in n or n == "node"] and GMES_KEY not in open(H.config_path, encoding="utf-8").read()
+      and os.path.isfile(os.path.join(H.logs, "eco-link.log")), leaks)
+check("the_gmes_key_is_protected_on_windows", os.name != "nt" or GMES_KEY.encode() not in open(key_file, "rb").read())
+
 # a lost attendance history comes back from the newest verified backup, and it is audited. Tried on a copy of the
 # installation in a new process: this process's engine is bound to the original folder and keeps its file open
 # (Windows cannot delete an open file), exactly like the real program, which is stopped before such a repair.
 SERVER.shutdown()
 SERVER.server_close()
+link_before = P.link
 P.close()
+check("closing_the_product_stops_the_link", not link_before.running and P.link is None)
+P2 = Product(H)
+P2.open()
+check("an_installation_with_an_address_starts_the_link_when_it_opens", P2.link.running and P2.report["eco_link"] is True)
+P2.close()
+H.set(eco={"gmes_url": ""})  # HR on its own again: the copies below must not publish
+P2 = Product(H)
+P2.open()
+check("an_empty_address_starts_nothing_when_it_opens", not P2.link.running and P2.report["eco_link"] is False and P2.link.keys.exists())
+P2.close()
+inbox.shutdown()
 lost = os.path.join(TMP, "product-lost-history")
 shutil.copytree(H.path, lost)
 os.remove(os.path.join(lost, "data", "history.db"))

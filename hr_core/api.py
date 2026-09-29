@@ -177,6 +177,30 @@ def make_handler(service, product=None):
             service.journal.audit("security", "settings.changed", user["code"], changes, h.ip)
             return 200, product.settings()
 
+        # the link to manufacturing (hr_core/eco_link.py): the answer says whether a key is stored, never the key
+        def link():
+            if product.link is None:
+                raise HttpError(503, "integration.unavailable", "the data is not open")
+            return product.link
+
+        @route("GET", "/api/admin/integration")
+        def integration(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "integration")
+            return 200, link().status()
+
+        @route("PUT", "/api/admin/integration")
+        def integration_put(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "integration:change")
+            return 200, link().change(body, user["code"], h.ip)
+
+        @route("POST", "/api/admin/integration/run")
+        def integration_run(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "integration:run")
+            report = link().run_once("manual")
+            service.journal.audit("activity", "integration.sent", user["code"], {k: report.get(k) for k in (
+                "staged", "sent", "delivered", "rejected") if k in report} | {"stopped": "stopped_by" in report, "failed": "error" in report}, h.ip)
+            return 200, report
+
     @route("GET", "/api/admin/backups")
     def backups(h, body, user):
         return 200, service.backup_list(user, h.ip)

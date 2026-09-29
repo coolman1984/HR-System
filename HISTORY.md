@@ -8,6 +8,60 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-28 — Ecosystem plan, Phase A: the installed product publishes to GMES by itself
+- **What:** Settings → Integration (GMES) (address, node, interval, write-only key, "Send now", last delivery, pending /
+  delivered / refused, both languages) and `hr_core/eco_link.py`: a background thread inside the product, started by
+  `Product.open()` when an address is set, stopped by `close()`, restarted on a change; routes
+  `GET|PUT /api/admin/integration` and `POST /api/admin/integration/run` (right `admin.settings.manage`, audited without
+  the key); `config.json` section `eco` validated in `hr_core/home.py`; the GMES key in `data/node/gmes.key` (Windows
+  DPAPI, machine scope; owner-only file elsewhere). `eco_schemas/README.md` now lists all five schemas. 17 new checks in
+  `TEST_HR_DELIVERY.py` (a fake GMES inbox on 127.0.0.1), one in `TEST_HR_WORKFORCE.py`, 5 new planted bugs.
+- **Why:** until now only `python eco_publisher.py` with `ECO_*` environment variables published, so no installed
+  customer could feed GMES (`STATUS.md` listed it as Partially built). `docs/HR_DELIVERY.md` ADR-HR-008.
+
+### A planted bug was committed: the last administrator could be disabled
+- **Symptom:** on commit `06fcf5e` `TEST_HR_SECURITY.py` failed at `last_administrator_cannot_be_disabled` (the server
+  answered 200 and disabled the only administrator), and `migration/mutations.py` stopped with "anchor not found" for
+  the planted bug "the last administrator can be disabled".
+- **Cause:** `hr_core/auth.py` still held that planted bug (`self._check_admin_remains()` replaced by `pass`), committed
+  with `0ba58a3`. A mutation run that is stopped before its `finally` block leaves the planted bug in the file.
+- **Fix:** the line is back; `TEST_HR_SECURITY.py` passes again and the planted bug is caught again.
+- **Lesson:** after an interrupted `python migration/mutations.py`, run `git diff` before committing: a planted bug looks
+  like an ordinary one-line change.
+
+### The planted-bug run stopped half way: the dictionaries had Windows line endings
+- **Symptom:** `python migration/mutations.py` stopped with "anchor not found in hr_core/web/i18n/en.json" (the planted
+  bug "a menu name is missing from the dictionary"), so every planted bug listed after it never ran.
+- **Cause:** commit `0ba58a3` rewrote `en.json` and `ar.json` with CRLF line endings (they had LF before); the anchor ends
+  in `\n`. With `* -text` in `.gitattributes`, git keeps whatever bytes a tool writes.
+- **Fix:** both dictionaries are LF again (same keys and texts; the diff is line endings plus the new `eco.*` texts).
+- **Lesson:** a tool that rewrites a JSON file on Windows must write `newline=""` bytes as they were; check
+  `git ls-files --eol` when a whole file shows as changed.
+
+### Opening the registry to publish could write to it
+- **Symptom:** the plan said the link opens "its own read-only Registry"; `hr_core.registry.Registry` has no read-only mode.
+- **Cause:** `Registry()` opens the journal as well, creates missing tables and runs `recover()`, which folds (writes)
+  journal lines the tables have not seen; a second opener beside the live service could race it and fold a line twice.
+- **Fix:** the link reads through `ReadOnlyRegistry` (`hr.db` opened with `mode=ro`, only `list` and `by_id`, the two
+  calls `eco_publisher` needs), opened and closed in the thread that runs each cycle. `TEST_HR_WORKFORCE.py` proves it
+  gives the same snapshots as the registry and cannot write; a planted bug opens it writable.
+- **Lesson:** "read-only" is a property of the connection, not of the caller's intentions: open it `mode=ro`.
+
+### An attendance upload was sometimes not yet in the audit when the test looked
+- **Symptom:** `TEST_HR_DELIVERY.py` failed twice in a row at `an_upload_is_audited_with_its_person` on a Windows
+  checkout, then passed on the next runs; the same commit passed in a clean copy.
+- **Cause:** the server writes the attendance audit line just after the locked engine has sent its answer; a fast client
+  can read the audit in between. The product is right (the upload is audited); the test raced it.
+- **Fix:** the test waits (at most 15 s) until the expected number of attendance audit lines is there
+  (`attendance_events()`), then checks them as before; the planted bug on that check is still caught.
+- **Lesson:** when the server acts after it answered, a test must wait for the effect, never assume it is already there.
+
+### The schema README listed three of the five contracts
+- **Symptom:** `eco_schemas/README.md` named the envelope, employee and attendance day only.
+- **Cause:** `eco.schedule_day.v1` and `eco.qualification.v1` were copied in with phases 3 and 5 without the README line.
+- **Fix:** both rows added (README only; the schema files are unchanged copies from GMES).
+- **Lesson:** a copied folder's index is part of the copy: check it when a file is added.
+
 ## 2026-09-28 — Discipline module, employee journey, guide system and the client demo
 - **What:** on the owner's order ("a full demo for clients: a new manager hired, his days, activities and penalties, time
   lapse", "a real penalties module", "Mizan's guide and warning system", "auto-fit the columns"): the **discipline** module

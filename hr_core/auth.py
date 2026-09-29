@@ -192,7 +192,7 @@ class Auth:
             self.db.execute("BEGIN IMMEDIATE")
             try:
                 results = [r for r in (self._plan(op, actor) for op in ops) if r]
-                pass
+                self._check_admin_remains()
             finally:
                 self.db.execute("ROLLBACK")
             if not results:

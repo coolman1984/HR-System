@@ -91,3 +91,12 @@ or from the owner. Add a line when something surprises you; never delete one, st
   client sees is one the product really produces.
 - Separate duties are separate checks chosen by what a request does (propose vs decide), not by the table it writes.
 - Measure what is drawn (padding, icons, the column's font) when sizing columns; keep what the person chose.
+
+## 2026-09-28 — Phase A: the product publishes to GMES
+- **L44** A secret is never a setting: settings are copied, shown, audited and backed up. Keep it beside `device.key`
+  (outside every backup), protected by the operating system (DPAPI on Windows), and let the API say only whether one is set.
+- **L45** "Read-only" is a property of the connection (`mode=ro`), not of the code that promises not to write; a second
+  opener of the registry would open the journal and may repair on open.
+- **L46** When the server acts after it has answered (the attendance audit line), a test waits for the effect.
+- **L47** After an interrupted `migration/mutations.py` run, `git diff` before committing: a planted bug left in a file
+  looks like an ordinary change (one was committed in `0ba58a3`).

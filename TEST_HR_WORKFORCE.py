@@ -183,6 +183,19 @@ withdrawn = [b for (k, _), b in eco_publisher.registry_plan_and_skills(reg, COMP
 check("a_withdrawn_qualification_is_published_as_inactive", withdrawn and withdrawn[0]["active"] is False)
 check("no_personal_data_in_the_plan", not any(set(b) - {"id", "employee", "work_date", "status", "shift_code", "start", "end", "paid_minutes", "source", "origin"}
                                                   for (k, _), b in snaps.items() if k == "eco.schedule_day.v1"))
+# the installed product's link (hr_core/eco_link.py) reads the registry through its own read-only connection: the same
+# facts as the registry itself, and it cannot write
+import sqlite3  # noqa: E402
+from hr_core.eco_link import ReadOnlyRegistry  # noqa: E402
+view = ReadOnlyRegistry(os.path.join(TMP, "data"), COMPANY)
+same_facts = eco_publisher.build_snapshots([], COMPANY, view)[0] == eco_publisher.build_snapshots([], COMPANY, reg)[0]
+try:
+    view.db.execute("CREATE TABLE written_by_the_link (x)")
+    writable = True
+except sqlite3.OperationalError:
+    writable = False
+view.close()
+check("the_product_link_reads_the_same_facts_and_cannot_write", same_facts and not writable, (same_facts, writable))
 
 svc.close()
 shutil.rmtree(TMP, ignore_errors=True)

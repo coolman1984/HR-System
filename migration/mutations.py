@@ -133,6 +133,17 @@ MUTATIONS = [
      'done = status == 200 and "error" not in reply and not reply.get("duplicate_upload")', "done = True", "TEST_HR_DELIVERY.py"),
     ("a file only Excel can open is handed to the engine on a PC without Excel", "hr_core/api.py",
      "            if excel_installed() is not False:\n                return False", "            if True:\n                return False", "TEST_HR_DELIVERY.py"),
+    # ecosystem plan, Phase A: the installed product publishes to GMES by itself (hr_core/eco_link.py)
+    ("the integration API returns the GMES key", "hr_core/eco_link.py",
+     '"key_set": key is not None,', '"key_set": key is not None, "key": key,', "TEST_HR_DELIVERY.py"),
+    ("the link to GMES starts although the address is empty", "hr_core/eco_link.py",
+     '            if not cfg["gmes_url"]:\n                return False', '            if False:\n                return False', "TEST_HR_DELIVERY.py"),
+    ("the integration settings change without the settings right", "hr_core/api.py",
+     'service.require(user, "admin.settings.manage", h.ip, "integration:change")', 'pass', "TEST_HR_DELIVERY.py"),
+    ("the GMES key is written into the audit", "hr_core/eco_link.py",
+     'detail = dict(new, key="changed" if key is not None', 'detail = dict(new, key=key if key is not None', "TEST_HR_DELIVERY.py"),
+    ("the link opens the registry with a writable connection", "hr_core/eco_link.py",
+     '"hr.db"))).as_uri() + "?mode=ro", uri=True)', '"hr.db"))).as_uri() + "?mode=rwc", uri=True)', "TEST_HR_WORKFORCE.py"),
     # phase 6: discipline
     ("whoever proposes a violation may also decide it", "hr_core/service.py",
      'self.require(user, "hr.discipline.approve" if deciding else WRITE_PERM[entity], ip, f"{entity}:{code}")', 'self.require(user, WRITE_PERM[entity], ip, f"{entity}:{code}")', "TEST_HR_DISCIPLINE.py"),

@@ -23,11 +23,17 @@ import secrets
 import sys
 import time
 import uuid
+from urllib.parse import urlsplit
 
 CODE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,19}$")
 SOURCES = ("owner", "local")
 OWNER_APPS = ("mizan",)
-DEFAULTS = {"host": "127.0.0.1", "port": 8766, "autostart": True, "language": "en", "backup_hours": 6}
+# `eco`: the link to manufacturing (GMES), hr_core/eco_link.py. An empty address = HR runs on its own. The GMES key is a
+# secret and is never a setting here: it lives in data/node/gmes.key (hr_core/eco_link.py), outside every backup.
+ECO_DEFAULTS = {"gmes_url": "", "node": "hr-main", "interval_seconds": 60}
+ECO_NODE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")  # the last part of the envelope's source, eco://<company>/hr/<node>
+ECO_INTERVAL = (10, 3600)
+DEFAULTS = {"host": "127.0.0.1", "port": 8766, "autostart": True, "language": "en", "backup_hours": 6, "eco": ECO_DEFAULTS}
 
 
 class HomeError(Exception):
@@ -80,7 +86,10 @@ class Home:
             stored = {}
         except ValueError as exc:
             raise HomeError("config.unreadable", f"{self.config_path} is not valid JSON ({exc}); fix or remove it") from None
-        return {**DEFAULTS, **stored}
+        cfg = {**DEFAULTS, **stored}
+        eco = stored.get("eco") if isinstance(stored.get("eco"), dict) else {}
+        cfg["eco"] = {**ECO_DEFAULTS, **{k: v for k, v in eco.items() if k in ECO_DEFAULTS}}  # a fresh dict, never DEFAULTS'
+        return cfg
 
     def _write(self, cfg):
         tmp = self.config_path + ".tmp"
@@ -90,8 +99,47 @@ class Home:
             os.fsync(fh.fileno())
         os.replace(tmp, self.config_path)  # never a half-written settings file
 
+    @staticmethod
+    def check_eco(changes, current=None):
+        """The `eco` section as it would be stored after `changes`, or HomeError; writes nothing."""
+        if not isinstance(changes, dict):
+            raise HomeError("config.eco", "the integration settings are an object")
+        unknown = set(changes) - set(ECO_DEFAULTS)
+        if unknown:
+            raise HomeError("config.field", f"not an integration setting: {sorted(unknown)[0]}")
+        out = {**ECO_DEFAULTS, **(current or {}), **changes}
+        url = out["gmes_url"]
+        if not isinstance(url, str):
+            raise HomeError("config.eco_url", "the GMES address is text, e.g. http://127.0.0.1:4700")
+        url = url.strip().rstrip("/")
+        if url:
+            parts = urlsplit(url)
+            if (parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password
+                    or parts.query or parts.fragment or re.search(r"\s", url) or len(url) > 300):
+                # no user:password@ either: config.json is not a place for a secret, and it would reach the audit
+                raise HomeError("config.eco_url", "the GMES address is http:// or https:// with a host name, without a password, "
+                                "e.g. http://127.0.0.1:4700 (leave it empty so HR works on its own)")
+            try:
+                parts.port
+            except ValueError:
+                raise HomeError("config.eco_url", "the port in the GMES address is not a number from 1 to 65535") from None
+        out["gmes_url"] = url
+        if not isinstance(out["node"], str) or not ECO_NODE.match(out["node"].strip()):
+            raise HomeError("config.eco_node", "the node name is 1-40 letters, digits, dot, dash or underscore (default hr-main)")
+        out["node"] = out["node"].strip()
+        seconds = out["interval_seconds"]
+        try:
+            if isinstance(seconds, bool) or (isinstance(seconds, float) and not seconds.is_integer()):
+                raise ValueError
+            out["interval_seconds"] = int(seconds)
+        except (TypeError, ValueError):
+            raise HomeError("config.eco_interval", "the sending interval is a whole number of seconds") from None
+        if not ECO_INTERVAL[0] <= out["interval_seconds"] <= ECO_INTERVAL[1]:
+            raise HomeError("config.eco_interval", f"the sending interval is {ECO_INTERVAL[0]} to {ECO_INTERVAL[1]} seconds")
+        return out
+
     def set(self, **changes):
-        allowed = {"autostart", "language", "backup_hours", "port", "host"}
+        allowed = {"autostart", "language", "backup_hours", "port", "host", "eco"}
         unknown = set(changes) - allowed
         if unknown:
             raise HomeError("config.field", f"not a setting: {sorted(unknown)[0]}")
@@ -107,6 +155,8 @@ class Home:
         if "autostart" in changes:
             changes["autostart"] = bool(changes["autostart"])
         cfg = self.config()
+        if "eco" in changes:
+            changes["eco"] = self.check_eco(changes["eco"], cfg["eco"])
         cfg.update(changes)
         self._write(cfg)
         return cfg

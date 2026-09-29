@@ -41,6 +41,14 @@ violations proposed from attendance, a separate right to decide, the law's limit
 separate demo installation (never a real one) at `..\HR-Demo` and starts it on port 8790 (admin / 123; other
 users Demo-2026!pass); the client story is Karim Abdelaziz (`E000900`), production manager hired 2026-06-15.
 
+**Ecosystem plan, Phase A (2026-09-28, approved by the owner):** the installed product now publishes to GMES by itself.
+Settings → Integration (GMES) sets the address, the node, the interval and a write-only key; with an empty address HR
+works on its own. `hr_core/eco_link.py` runs the publisher in a background thread started by `Product.open()`, stopped
+by `close()`, restarted on a change, reading the registry through its own read-only connection. The GMES key is kept in
+`data/node/gmes.key` (Windows DPAPI, machine scope), never in config.json, the API, a backup, a log or the audit
+(`docs/HR_DELIVERY.md` ADR-HR-008). Routes: `GET|PUT /api/admin/integration`, `POST /api/admin/integration/run`.
+`python eco_publisher.py` with `ECO_*` keeps working unchanged.
+
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
   on 2026-09-27 when the ecosystem needed one owner for people (`MIGRATION.md`).
@@ -62,6 +70,10 @@ users Demo-2026!pass); the client story is Karim Abdelaziz (`E000900`), producti
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
+000. Phase A (the link to GMES): run the Windows installer job and look at Settings → Integration (GMES) in the
+   installed program, in English and Arabic, light and dark (not yet seen in a browser); extend
+   `tools/installed_acceptance.py` with an address and a key (DPAPI in the compiled program was not run); in GMES, let
+   the HR end-to-end test configure HR through `PUT /api/admin/integration` instead of `ECO_*` variables.
 00. The owner reviews the demo (`Start-HR-Demo.bat`): the journey of `E000900`, violations and decisions, the Advisor, the
    guided tours. Arabic and dark mode of the new screens (journey, violations, help panel) were not yet looked at in a
    browser: do that, and retake `docs/ux/` screenshots. Fix the look in GMES

@@ -7,7 +7,8 @@
 Opening an installation, in order: put back a lost attendance history from the newest verified backup; bring the
 data to this program's data version (hr_core/upgrade.py: verified pre-update backup first); bind the locked
 attendance engine to the data folder; verify the journal and the audit; only then promote the installer that came
-with this version to the recovery folder and start the automatic backups.
+with this version to the recovery folder and start the automatic backups, and (when a GMES address is set in the
+settings) the link that publishes HR's workforce truth to manufacturing (hr_core/eco_link.py).
 Standard library only.
 """
 
@@ -30,12 +31,14 @@ class Product:
         self.attendance = Attendance(self.home.data)
         self.service = None
         self.server = None
+        self.link = None  # hr_core/eco_link.EcoLink once the data is open; its thread runs only with a GMES address
         self.report = {}
         self.error = None  # set when the data cannot be opened (e.g. a failed update): the screens show it
         self.lock = threading.Lock()
 
     # ------------------------------------------------------------------ opening
-    def open(self):
+    def open(self, link=True):
+        """`link=False`: maintenance tools (hr_main.py tool ...) open the data without publishing anything."""
         company = self.home.company()
         if not company:
             raise HomeError("company.missing", "this installation does not belong to a company yet")
@@ -58,6 +61,10 @@ class Product:
             if self.report["recovery"]:
                 self.service.journal.audit("system", "recovery.installer", "system", self.report["recovery"])
         self.service.backups.start(float(self.home.config().get("backup_hours", 6)))
+        from .eco_link import EcoLink
+        self.link = EcoLink(self.home, company["id"], self.attendance, self.service.journal)
+        if link:
+            self.report["eco_link"] = self.link.start()
         return self.service
 
     def install(self, company, admin, ip=None):
@@ -133,6 +140,9 @@ class Product:
         return self.server
 
     def close(self):
+        if self.link is not None:
+            self.link.stop()
+            self.link = None
         if self.service is not None:
             self.service.close()
             self.service = None
