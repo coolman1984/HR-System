@@ -8,6 +8,12 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-30 - A simulated clock, impossible in an installed program
+- **Symptom:** the scenario engine has to live ninety days in minutes; every rule of HR (past is history, overtime at most 3 days back, leave, contracts) reads "today", so nothing could be played on another date.
+- **Cause:** `today()` was the computer's date, read in several places.
+- **Fix:** one helper `hr_core/clock.py`; with `HR_SIMULATION=1` an administrator may move the date (`PUT /api/sim/today`, audited); without the switch the route is not even registered. `TEST_HR_SIMULATION.py` and two planted bugs (date movable without the switch; moved without the settings right).
+- **Lesson:** a test hook that can exist in production is a back-dating hole; make it absent, not just refused.
+
 ## 2026-09-30 — Ecosystem plan, WP-H1 to WP-H5: what manufacturing tells HR, recruitment, overtime, training, leave
 - **What:** the machine-key inbox (`POST /eco/v1/inbox`, `hr_core/eco_inbox.py`: crew requirements and labour facts from
   GMES, applied once, newest version wins) with the staffing gap per day and shift (`GET /api/staffing/gap`) and the

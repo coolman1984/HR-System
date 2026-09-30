@@ -103,3 +103,5 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L48** A four-eyes rule (the author never approves) is tested with a person who holds the approve right and is the author; a plain viewer is refused by the right first and proves nothing (six planted bugs survived until then, `HISTORY.md` 2026-09-30).
 - **L49** A planted bug that survives is either a missing test or a change that alters nothing; find out which before adding a check.
 - **L50** Guards that read code with a regular expression stop guarding when the code style changes; read it with `ast` (the route inventory missed raw strings and `ENTITY_ROUTE`).
+
+- **Test hooks must be absent in production (2026-09-30).** The simulated date exists only when the process starts with HR_SIMULATION=1; the route is not registered otherwise.
