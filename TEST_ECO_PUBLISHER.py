@@ -22,13 +22,19 @@ KEY = "gk_test"
 
 class FakeInbox(BaseHTTPRequestHandler):
     seen, received, refuse = set(), [], set()
+    signatures = []
 
     def log_message(self, *args):
         pass
 
     def do_POST(self):
         assert self.path == "/eco/v1/inbox" and self.headers["x-eco-key"] == KEY
-        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        raw = self.rfile.read(int(self.headers["content-length"]))
+        body = json.loads(raw)
+        # what the publisher sends is signed: the receiver (Mizan, GMES, HR) can check method, path, body and time
+        import eco_signing
+        FakeInbox.signatures.append(eco_signing.check_signature(eco_signing.sha256hex(KEY), "POST", self.path, raw.decode("utf-8"),
+                                                                 self.headers.get("x-eco-ts"), self.headers.get("x-eco-sig"), True))
         results = []
         for ev in body["events"]:
             FakeInbox.received.append(ev)
@@ -143,6 +149,8 @@ with tempfile.TemporaryDirectory(prefix="hr_eco_", ignore_cleanup_errors=True) a
     snaps3, problems3 = eco_publisher.build_snapshots(frac, COMPANY)
     assert "worked_minutes" not in next(iter(snaps3.values())) and problems3
     results["no_silent_rounding"] = True
+    assert FakeInbox.signatures and all(s is None for s in FakeInbox.signatures), FakeInbox.signatures
+    results["every_delivery_is_signed_and_verifies"] = True
     inbox.shutdown()
 
 print(json.dumps(results, indent=2))

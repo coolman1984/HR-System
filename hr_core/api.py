@@ -127,7 +127,8 @@ def make_handler(service, product=None):
 
     @route("POST", "/eco/v1/inbox")
     def eco_in(h, body, user):
-        name, refused = eco_inbox().caller(h.headers.get("x-eco-key"), "eco.inbox.write")
+        name, refused = eco_inbox().caller(h.headers.get("x-eco-key"), "eco.inbox.write",
+                                           ("POST", h.path, getattr(h, "raw_body", b""), h.headers.get("x-eco-ts"), h.headers.get("x-eco-sig")))
         if refused:
             raise HttpError(refused[0], refused[1], "a valid machine key with the scope eco.inbox.write is required")
         events = body.get("events")
@@ -359,6 +360,7 @@ def make_handler(service, product=None):
                     if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
                         raise HttpError(415, "body.json_only", "send JSON (Content-Type: application/json)")
                     raw = self.rfile.read(length) if length else b""
+                    self.raw_body = raw   # a signed machine call is checked over exactly these bytes
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise HttpError(400, "body.object", "the body must be a JSON object")

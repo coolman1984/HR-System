@@ -195,6 +195,13 @@ MUTATIONS = [
      "    if not enabled():\n        raise ClockError(\"clock.not_simulation\"", "    if False:\n        raise ClockError(\"clock.not_simulation\"", "TEST_HR_SIMULATION.py"),
     ("a person without the settings right moves the simulated date", "hr_core/api.py",
      'service.require(user, "admin.settings.manage", h.ip, "simulation:set")', "pass", "TEST_HR_SIMULATION.py"),
+    # signed machine calls (WP-X2)
+    ("a signature is accepted whatever the body", "eco_signing.py",
+     '    want = sign_request(key_hash, method, path_with_query, raw_body, int(ts))', '    want = sign_request(key_hash, method, path_with_query, "", int(ts))', "TEST_HR_ECO_INBOX.py"),
+    ("a stale signature is accepted", "eco_signing.py",
+     "    if abs(now - int(ts)) > WINDOW_MS:", "    if False:", "TEST_HR_ECO_INBOX.py"),
+    ("an unsigned call is accepted although signatures are required", "eco_signing.py",
+     '        return "auth.signature_required" if required else None', "        return None", "TEST_HR_ECO_INBOX.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only"', '"payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "built"', "TEST_DOCS_CURRENT.py"),
