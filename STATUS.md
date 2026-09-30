@@ -1,5 +1,6 @@
 # STATUS — where HR-System stands
 | `clock` (simulation, 2026-09-30) - one helper gives every "today" in `hr_core`; with `HR_SIMULATION=1` an administrator can move it (`GET/PUT /api/sim/today`, audited); without the switch the route does not exist, so an installed program can never be back-dated | `hr_core/clock.py`, `hr_core/registry.py`, `hr_core/api.py` | `TEST_HR_SIMULATION.py` (9), two planted bugs in `migration/mutations.py` |
+| `eco_signing` (WP-X2, 2026-09-30) - a machine call may be signed (HMAC-SHA256 over method, path, body and time, five-minute window, keyed with the SHA-256 of the machine key); HR's publisher signs, the inbox checks, `ECO_REQUIRE_SIGNATURE=1` makes it mandatory; the same algorithm and test vector as Mizan and GMES | `eco_signing.py`, `hr_core/eco_inbox.py`, `hr_core/api.py`, `eco_publisher.py` | `TEST_HR_ECO_INBOX.py`, `TEST_ECO_PUBLISHER.py`, three planted bugs |
 python TEST_HR_SIMULATION.py         the simulated date: movable only with HR_SIMULATION=1, every rule follows it
 
 Read this first after an interruption, then `AGENT_HANDOFF.md`. `TEST_DOCS_CURRENT.py` fails when this file falls
@@ -162,7 +163,7 @@ stage: 2.5 one installable product + 2.6 product shell
 updated: 2026-09-30
 done_phases: 1 2
 hr_core: api app attendance auth backup canonical clock device discipline eco_inbox eco_link home importer journal modules people_ops people_service registry scheduling service signing skills upgrade version web
-root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher engine hr_main hr_registry hr_server
+root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher eco_signing engine hr_main hr_registry hr_server
 root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_DISCIPLINE TEST_HR_ECO_INBOX TEST_HR_FOUNDATION TEST_HR_PEOPLE_OPS TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_SIMULATION TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
 contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1 eco.qualification.v1 eco.schedule_day.v1 mes.crew_requirement.v1 mes.labor_day.v1
 entities: org_unit job position employee shift work_calendar shift_assignment roster_override skill employee_skill penalty_rule violation headcount_plan agency hire_requisition candidate onboarding_task contract overtime_request course training_session leave_type leave_request
@@ -245,5 +246,5 @@ route: PUT /api/admin/settings
 route: GET /api/admin/integration
 route: PUT /api/admin/integration
 route: POST /api/admin/integration/run
-mutations: 99
+mutations: 102
 ```

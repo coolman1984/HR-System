@@ -16,6 +16,12 @@ Older, finer-grained records stay where they were written: `project_memory/PROJE
   logo left (`docs/ux/visual-acceptance.md`, `STATUS.md`, `AGENT_HANDOFF.md`, `docs/HR_SYSTEM_DESIGN.md`). No behaviour change.
 - **Lesson:** a public design document names ideas, never another company's product.
 
+## 2026-09-30 - Signed machine calls, and the publisher follows the simulated day
+- **Symptom:** a copied or altered call to the inbox was as good as the original; and in a simulated run the schedule HR published started at the computer's real date, so manufacturing had no schedule for the simulated days and produced no labour facts.
+- **Cause:** machine calls carried only the key; `registry_plan_and_skills` read `date.today()`.
+- **Fix:** `eco_signing.py` (HMAC over method, path, body and time; five minutes; optional, mandatory with `ECO_REQUIRE_SIGNATURE=1`), checked in the inbox and added by the publisher; the publisher's window starts at `hr_core.clock.today()`.
+- **Lesson:** every place that reads "today" belongs to the clock helper, including the publisher; and a signature must be tested against another implementation's vector.
+
 ## 2026-09-30 - A simulated clock, impossible in an installed program
 - **Symptom:** the scenario engine has to live ninety days in minutes; every rule of HR (past is history, overtime at most 3 days back, leave, contracts) reads "today", so nothing could be played on another date.
 - **Cause:** `today()` was the computer's date, read in several places.

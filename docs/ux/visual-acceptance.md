@@ -22,7 +22,7 @@ next set. Items marked **ref** are compared side by side with the owner's refere
 | 1.5 | Breadcrumb + screen code on every screen (**ref**: the code is the address) | ✓ | ✓ |
 | 1.6 | Status bar: connection (observed, not assumed), company, user, clock, version, language | ✓ | ✓ |
 | 1.7 | Favourites (star on the screen) appear at the top of the menu | ✓ | ✓ |
-| 1.8 | No other vendor's logo, name, icon or asset anywhere; our own marks and accent colours | ✓ | ✓ |
+| 1.8 | No other company's logo, name, icon or asset anywhere; our own marks and accent colours | ✓ | ✓ |
 
 ## 2. The standard screen (conditions → Inquiry → grid → details)
 | # | Check | GMES | HR |

@@ -12,6 +12,7 @@ Standard library only.
 
 import hashlib
 import json
+import os
 import secrets
 import sqlite3
 import threading
@@ -19,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import eco_contract
+import eco_signing
 
 from . import skills
 
@@ -89,8 +91,9 @@ class EcoInbox:
         with self.lock:
             self.db.execute("UPDATE machine_key SET active = 0 WHERE id = ?", (int(key_id),))
 
-    def caller(self, key, scope):
-        """The key's name, or (status, code) when refused."""
+    def caller(self, key, scope, request=None):
+        """The key's name, or (status, code) when refused. `request` = (method, path with query, raw body bytes, x-eco-ts, x-eco-sig):
+        a signed request must match its path, body and time; an unsigned one is refused only when ECO_REQUIRE_SIGNATURE=1 (eco_signing.py)."""
         if not key:
             return None, (401, "eco.key_required")
         row = self.db.execute("SELECT name, scopes, active FROM machine_key WHERE hash = ?", (_hash(key),)).fetchone()
@@ -98,6 +101,11 @@ class EcoInbox:
             return None, (401, "eco.key_unknown")
         if scope not in row["scopes"].split():
             return None, (403, "eco.scope_missing")
+        if request is not None:
+            method, path, raw, ts, sig = request
+            problem = eco_signing.check_signature(_hash(key), method, path, raw, ts, sig, os.environ.get("ECO_REQUIRE_SIGNATURE") == "1")
+            if problem:
+                return None, (401, problem)
         return row["name"], None
 
     # ------------------------------------------------------------------ inbox

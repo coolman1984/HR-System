@@ -44,6 +44,7 @@ import uuid
 from datetime import datetime, timezone
 
 import eco_contract
+import eco_signing
 
 BATCH = 200
 
@@ -100,10 +101,10 @@ def registry_plan_and_skills(registry, company, today=None):
     WINDOW_DAYS, and every qualification (a withdrawn one is published as inactive, so manufacturing stops accepting it).
     Only the fields of the contracts leave HR."""
     from datetime import date, timedelta
-    from hr_core import scheduling
+    from hr_core import clock, scheduling
     out = {}
     plan = scheduling.Schedule(registry)
-    first = date.fromisoformat(today) if today else date.today()
+    first = date.fromisoformat(today or clock.today())   # the computer's date, or the simulated one (only with HR_SIMULATION=1)
     planned = {a for a in plan.assignments} | {e for e, _ in plan.overrides}
     for emp_id in sorted(planned):
         emp = plan.employees.get(emp_id)
@@ -283,7 +284,8 @@ class Publisher:
                     raise RuntimeError(f"refusing to publish an invalid {ev.get('type')}: {problems[:3]}")
             body = json.dumps({"events": events}, ensure_ascii=False).encode("utf-8")
             request = urllib.request.Request(self.url + "/eco/v1/inbox", data=body, method="POST",
-                                             headers={"content-type": "application/json", "x-eco-key": self.key})
+                                             headers={"content-type": "application/json", "x-eco-key": self.key,
+                                                      **eco_signing.signature_headers(self.key, "POST", "/eco/v1/inbox", body)})
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     answer = json.loads(response.read().decode("utf-8"))

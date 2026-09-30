@@ -122,6 +122,43 @@ check("evidence_sets_worked_against_planned", status == 200 and len(ev) == 1 and
 call("POST", "/eco/v1/inbox", {"events": [labour(430, version=2)]}, key=KEY, session=False)
 check("a_newer_version_replaces_it", call("GET", "/api/labour/evidence?from=2026-10-05&to=2026-10-05")[1][0]["beyond_plan"] == 0)
 
+# ---- request signatures (WP-X2): the same algorithm and the same vector as Mizan and GMES
+import eco_signing  # noqa: E402
+
+check("the_signature_vector_is_the_same_in_all_three_applications",
+      eco_signing.sha256hex("mk_example_key") == "2e0337bdb84b83290ffebce13b546d7a2e9946911b81a9775b069bbb1afc7013"
+      and eco_signing.sign_request(eco_signing.sha256hex("mk_example_key"), "POST", "/eco/v1/inbox?x=1", '{"events":[]}', 1_800_000_000_000)
+      == "d67f9a620fd70b7d0f6ffeee7f3f4cbc256e1ef3a573dedb2cb33507e0868197")
+
+
+def signed(body_obj, key=KEY, path="/eco/v1/inbox", ts=None, tamper=None):
+    raw = json.dumps(body_obj).encode()
+    headers = {"Content-Type": "application/json", "x-eco-key": key, **eco_signing.signature_headers(key, "POST", path, raw.decode(), ts)}
+    req = urllib.request.Request(BASE + "/eco/v1/inbox", method="POST", data=tamper if tamper is not None else raw, headers=headers)
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
+
+
+check("a_signed_call_is_accepted", signed({"events": [crew("FA-7", 2, date="2026-10-07")]})[0] == 200)
+status, out = signed({"events": [crew("FA-7", 2, date="2026-10-07")]}, tamper=json.dumps({"events": []}).encode())
+check("a_body_changed_after_signing_is_refused", status == 401 and out["error"] == "auth.signature_invalid", out)
+status, out = signed({"events": []}, path="/eco/v1/feed")
+check("a_signature_for_another_path_is_refused", status == 401 and out["error"] == "auth.signature_invalid", out)
+import time  # noqa: E402
+status, out = signed({"events": []}, ts=int(time.time() * 1000) - 6 * 60_000)
+check("a_stale_signature_is_refused", status == 401 and out["error"] == "auth.signature_expired", out)
+check("unsigned_is_accepted_until_signatures_are_required", call("POST", "/eco/v1/inbox", {"events": [crew("FA-8", 2, date="2026-10-08")]}, key=KEY, session=False)[0] == 200)
+os.environ["ECO_REQUIRE_SIGNATURE"] = "1"
+try:
+    status, out = call("POST", "/eco/v1/inbox", {"events": [crew("FA-8", 3, date="2026-10-09")]}, key=KEY, session=False)
+    check("unsigned_is_refused_when_required", status == 401 and out["error"] == "auth.signature_required", out)
+    check("signed_is_accepted_when_required", signed({"events": [crew("FA-8", 3, date="2026-10-10")]})[0] == 200)
+finally:
+    del os.environ["ECO_REQUIRE_SIGNATURE"]
+
 server.shutdown()
 print(json.dumps(results, indent=2))
 print("TEST_HR_ECO_INBOX: all", len(results), "checks passed")
