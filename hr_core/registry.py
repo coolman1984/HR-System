@@ -22,6 +22,7 @@ import threading
 import uuid
 from datetime import datetime, timezone  # noqa: F401
 
+from . import clock
 from . import discipline, people_ops, scheduling, skills
 from .canonical import canonical
 from .journal import SharedConnection, open_journal
@@ -94,7 +95,7 @@ def _today():
     moves it for the delivery tests only (with HR_TEST_HOOKS=1)."""
     if os.environ.get("HR_TEST_HOOKS") == "1" and os.environ.get("HR_TEST_TODAY"):
         return os.environ["HR_TEST_TODAY"]
-    return datetime.now().date().isoformat()
+    return clock.today()  # the computer's date, or the simulated one (hr_core/clock.py; only with HR_SIMULATION=1)
 
 
 class Registry:

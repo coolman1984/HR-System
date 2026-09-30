@@ -18,6 +18,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from . import clock
 from .auth import AuthError
 from .backup import BackupError
 from .home import HomeError
@@ -217,6 +218,23 @@ def make_handler(service, product=None):
                 quals.setdefault(q["employee_id"], []).append({"skill": skill_code[q["skill_id"]], "level": int(q.get("level") or 0),
                                                                "certified_on": q.get("certified_on") or "9999-12-31", "expires_on": q.get("expires_on")})
         return 200, staffing_gap(eco_inbox().requirements(first, last, h.query.get("line") or None), days, quals)
+
+    # -------------------------------------------------------------- simulation (only when the server runs with HR_SIMULATION=1)
+    if clock.enabled():
+        @route("GET", "/api/sim/today")
+        def sim_today_get(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "simulation")
+            return 200, {"today": service.registry.today(), "simulation": True}
+
+        @route("PUT", "/api/sim/today")
+        def sim_today_put(h, body, user):
+            service.require(user, "admin.settings.manage", h.ip, "simulation:set")
+            try:
+                day = clock.set_today(body.get("today"))
+            except clock.ClockError as exc:
+                raise HttpError(400, exc.code, str(exc)) from None
+            service.journal.audit("system", "simulation.today", user["code"], {"today": day}, h.ip)
+            return 200, {"today": day, "simulation": True}
 
     # -------------------------------------------------------------- accounts
     @route("GET", "/api/admin/users")

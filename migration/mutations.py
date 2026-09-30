@@ -190,6 +190,11 @@ MUTATIONS = [
      'if planned["status"] == "work" and minutes + planned["paid_minutes"] > p["max_daily_minutes_incl_ot"]:', "if False:", "TEST_HR_PEOPLE_OPS.py"),
     ("overtime is asked for on a day of approved leave", "hr_core/people_ops.py",
      '    if planned["status"] == "leave":', "    if False:", "TEST_HR_PEOPLE_OPS.py"),
+    # the simulated date (WP-H7): an installed program can never be back-dated
+    ("the date can be moved without the simulation switch", "hr_core/clock.py",
+     "    if not enabled():\n        raise ClockError(\"clock.not_simulation\"", "    if False:\n        raise ClockError(\"clock.not_simulation\"", "TEST_HR_SIMULATION.py"),
+    ("a person without the settings right moves the simulated date", "hr_core/api.py",
+     'service.require(user, "admin.settings.manage", h.ip, "simulation:set")', "pass", "TEST_HR_SIMULATION.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module is marked built without the documents", "hr_core/modules.py",
      '"payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only"', '"payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "built"', "TEST_DOCS_CURRENT.py"),

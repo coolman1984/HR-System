@@ -76,6 +76,7 @@ python TEST_HR_WORKFORCE.py         phases 3 and 5: shifts, schedule, attendance
 python TEST_HR_DISCIPLINE.py        phase 6: penalty schedule, proposals from attendance, separate right to decide, the law's limits
 python TEST_HR_ECO_INBOX.py         what manufacturing tells HR: machine keys, crew requirements, labour facts, the staffing gap
 python TEST_HR_PEOPLE_OPS.py         recruitment and onboarding, overtime, training that qualifies, leave
+python TEST_HR_SIMULATION.py         the simulated date: movable only with HR_SIMULATION=1, every rule follows it
 python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py
