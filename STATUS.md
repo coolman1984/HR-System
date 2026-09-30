@@ -21,7 +21,7 @@ kit (`hr_core/web/eco-ui/`, copied unchanged from GMES `packages/eco-ui/src` and
 sign-in and first-run pages, dashboard, employees (search/filter conditions, dense grid, detail panel, bulk actions,
 editor dialog), organisation structure tree, jobs, positions, attendance, users, profiles and rights, audit, backups,
 system health, settings; English/Arabic, light/dark, compact/comfortable. Screenshots and the visual acceptance
-checklist: `docs/ux/`. **Exit gate:** the owner approves the visual shell (compared with his redacted G-MES screenshots).
+checklist: `docs/ux/`. **Exit gate:** the owner approves the visual shell (compared with his redacted reference screenshots).
 On the owner's order (2026-09-28) the shell took Mizan's look and ideas through the kit (GMES `4d27f55`, ADR-033): the
 modern look by default, column filters / grouping / presets, the Advisor, the Mizan-style dashboard, the rights matrix.
 Seen in a real browser on 2026-09-28 (Chrome over CDP, the demo installation): every main screen opens without a script error; a syntax error, a white box in primary buttons, too narrow columns and an empty half of the dashboard in Arabic were found there and fixed.

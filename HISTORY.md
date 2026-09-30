@@ -8,6 +8,14 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-30 - Documents named another company's system
+- **Symptom:** the UX documents compared the screens with a named vendor's system and quoted its screen codes; the
+  repository is public and the owner presents the ecosystem to other factories.
+- **Cause:** the visual checklist was copied from the manufacturing design while that comparison was still planned.
+- **Fix:** neutral wording ("reference screenshots", "enterprise-MES philosophy"); no vendor name, screen code or
+  logo left (`docs/ux/visual-acceptance.md`, `STATUS.md`, `AGENT_HANDOFF.md`, `docs/HR_SYSTEM_DESIGN.md`). No behaviour change.
+- **Lesson:** a public design document names ideas, never another company's product.
+
 ## 2026-09-30 - A simulated clock, impossible in an installed program
 - **Symptom:** the scenario engine has to live ninety days in minutes; every rule of HR (past is history, overtime at most 3 days back, leave, contracts) reads "today", so nothing could be played on another date.
 - **Cause:** `today()` was the computer's date, read in several places.
