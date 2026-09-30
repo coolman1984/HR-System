@@ -126,8 +126,24 @@ same("registry entities (hr_core/registry.py ENTITIES)", words(STATUS, "entities
      literal_keys("hr_core/registry.py", "ENTITIES"))
 same("permissions (hr_core/auth.py PERMISSIONS)", words(STATUS, "permissions", "STATUS.md"),
      literal_keys("hr_core/auth.py", "PERMISSIONS"))
-same("HTTP routes (hr_core/api.py)", STATUS.get("route", []),
-     [f"{m} {p}" for m, p in re.findall(r'@route\("(\w+)", "([^"]+)"\)', read("hr_core/api.py"))])
+def http_routes():
+    """Every `@route(METHOD, pattern)` of hr_core/api.py, with `"/api/" + ENTITY_ROUTE` written out (raw strings included)."""
+    from hr_core.registry import ENTITIES
+    known = {"ENTITY_ROUTE": "(" + "|".join(ENTITIES) + ")"}
+
+    def text(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return known[node.id]
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return text(node.left) + text(node.right)
+        fail("hr_core/api.py: a route pattern is built in a way this test cannot read")
+    return [f"{n.args[0].value} {text(n.args[1])}" for n in ast.walk(ast.parse(read("hr_core/api.py")))
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "route" and len(n.args) == 2 and isinstance(n.args[0], ast.Constant)]
+
+
+same("HTTP routes (hr_core/api.py)", STATUS.get("route", []), http_routes())
 same("commands", STATUS.get("command", []),
      [f"{f[:-3]} {c}" for f in ("hr_server.py", "hr_registry.py", "hr_main.py") for c in re.findall(r'cmd == "([\w-]+)"', read(f))])
 from hr_core.modules import MODULES  # noqa: E402

@@ -21,9 +21,10 @@ from urllib.parse import parse_qs, urlparse
 from .auth import AuthError
 from .backup import BackupError
 from .home import HomeError
-from .registry import Conflict, RegistryError
+from .registry import ENTITIES, Conflict, RegistryError
 
 MAX_BODY = 1 << 20
+ENTITY_ROUTE = "(" + "|".join(ENTITIES) + ")"      # every register the registry keeps has the same four routes
 LOCAL = {"127.0.0.1", "::1"}
 
 
@@ -81,22 +82,22 @@ def make_handler(service, product=None):
     def recycle(h, body, user):
         return 200, service.recycle_bin(user, h.ip)
 
-    @route("GET", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)")
+    @route("GET", "/api/" + ENTITY_ROUTE)
     def list_(h, body, user, entity):
         return 200, service.list(user, entity, h.query.get("deleted") == "1", h.ip)
 
-    @route("PUT", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)")
+    @route("PUT", "/api/" + ENTITY_ROUTE + "/([^/]+)")
     def put(h, body, user, entity, code):
         return 200, service.save(user, entity, code, body.get("fields") or {}, body.get("expected_ver"), h.ip)
 
-    @route("DELETE", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)")
+    @route("DELETE", "/api/" + ENTITY_ROUTE + "/([^/]+)")
     def delete(h, body, user, entity, code):
         ver = h.query.get("ver")
         if not (ver or "").isdigit():
             raise HttpError(409, "ver.required", "send the version you are deleting (?ver=)")
         return 200, {"seq": service.delete(user, entity, code, int(ver), h.query.get("type"), h.ip)}
 
-    @route("POST", "/api/(org_unit|job|position|employee|shift|work_calendar|shift_assignment|roster_override|skill|employee_skill|penalty_rule|violation)/([^/]+)/restore")
+    @route("POST", "/api/" + ENTITY_ROUTE + "/([^/]+)/restore")
     def restore(h, body, user, entity, code):
         return 200, {"seq": service.restore(user, entity, code, body.get("type"), h.ip)}
 
@@ -121,13 +122,7 @@ def make_handler(service, product=None):
         return 200, {"seq": service.swap(user, body.get("date", ""), body.get("a", ""), body.get("b", ""), body.get("reason", ""), h.ip)}
 
     # -------------------------------------------------------------- what manufacturing tells HR (hr_core/eco_inbox.py, WP-H1)
-    holder = {}
-
-    def eco_inbox():
-        if "inbox" not in holder:
-            from .eco_inbox import EcoInbox
-            holder["inbox"] = EcoInbox(service.data_dir, service.registry.company_id)
-        return holder["inbox"]
+    eco_inbox = service.eco_inbox
 
     @route("POST", "/eco/v1/inbox")
     def eco_in(h, body, user):
@@ -158,6 +153,56 @@ def make_handler(service, product=None):
         service.journal.audit("security", "eco.key.revoked", user["code"], {"id": int(key_id)}, h.ip)
         return 200, {"ok": True}
 
+    @route("GET", "/api/labour/evidence")
+    def labour_evidence(h, body, user):
+        """What manufacturing says people did, next to what HR planned: overtime evidence (never a decision or a payment)."""
+        from . import scheduling
+        service.require(user, "hr.shifts.read", h.ip, "labour")
+        first, last, employee = h.query.get("from", ""), h.query.get("to", ""), h.query.get("employee") or None
+        days = {(d["employee_code"], d["work_date"]): d for d in scheduling.Schedule(service.registry).days(first, last)}
+        out = []
+        for r in eco_inbox().labour(first, last, employee):
+            planned = days.get((r["employee_code"], r["production_date"]), {}).get("paid_minutes", 0)
+            out.append({"employee": r["employee_code"], "date": r["production_date"], "shift": r["shift_code"], "worked_in_production": r["total_minutes"],
+                        "planned_paid": planned, "beyond_plan": max(0, r["total_minutes"] - planned), "entries": r["entries"], "version": r["version"]})
+        return 200, out
+    # -------------------------------------------------------------- people operations (hr_core/people_service.py, WP-H2 to WP-H5)
+    @route("POST", r"/api/recruitment/candidates/([^/]+)/hire")
+    def recruitment_hire(h, body, user, code):
+        return 201, service.hire(user, code, body, h.ip)
+
+    @route("GET", "/api/recruitment/onboarding")
+    def recruitment_onboarding(h, body, user):
+        return 200, service.onboarding_status(user, h.query.get("employee", ""), h.ip)
+
+    @route("POST", "/api/recruitment/propose-headcount")
+    def recruitment_headcount(h, body, user):
+        return 200, service.propose_headcount(user, bool(body.get("apply")), body.get("relief_bp"), h.ip)
+
+    @route("POST", "/api/recruitment/expire-contracts")
+    def recruitment_expire(h, body, user):
+        service.require(user, "hr.recruitment.write", h.ip, "contracts.expire")
+        return 200, service.expire_contracts(user, h.ip)
+
+    @route("POST", r"/api/training/sessions/([^/]+)/complete")
+    def training_complete(h, body, user, code):
+        return 200, service.complete_training(user, code, body.get("results") or [], h.ip)
+
+    @route("GET", "/api/leave/balance")
+    def leave_balance(h, body, user):
+        return 200, service.leave_balance_of(user, h.query.get("employee", ""), h.query.get("year") or service.registry.today()[:4], h.ip)
+
+    @route("GET", "/api/overtime/figures")
+    def overtime_figures(h, body, user):
+        return 200, service.overtime_figures(user, h.query.get("period", ""), h.ip)
+
+    @route("GET", "/api/overtime/policy")
+    def overtime_policy_get(h, body, user):
+        return 200, service.overtime_policy(user, h.ip)
+
+    @route("PUT", "/api/overtime/policy")
+    def overtime_policy_put(h, body, user):
+        return 200, service.set_overtime_policy(user, body, h.ip)
     @route("GET", "/api/staffing/gap")
     def staffing(h, body, user):
         from . import scheduling

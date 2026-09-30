@@ -13,7 +13,8 @@ from .auth import PERMISSIONS, Auth, AuthError
 from .backup import Backups, BackupError, recover_lost_journal
 from .device import Device
 from .journal import Journal
-from . import discipline, scheduling, skills
+from . import discipline, people_ops, scheduling, skills
+from .people_service import READ as PEOPLE_READ, WRITE as PEOPLE_WRITE, PeopleOpsMixin
 from .registry import ENTITIES, Conflict, Registry, RegistryError
 
 WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr.org.write", "employee": "hr.employees.write",
@@ -22,9 +23,16 @@ WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr
 READ_PERM = {"org_unit": "hr.org.read", "job": "hr.org.read", "position": "hr.org.read", "employee": "hr.employees.read",
              "shift": "hr.shifts.read", "work_calendar": "hr.shifts.read", "shift_assignment": "hr.shifts.read", "roster_override": "hr.shifts.read",
              "skill": "hr.skills.read", "employee_skill": "hr.skills.read", "penalty_rule": "hr.discipline.read", "violation": "hr.discipline.read"}
+WRITE_PERM.update(PEOPLE_WRITE)
+READ_PERM.update(PEOPLE_READ)
 
 
-class HRService:
+def people_ops_entities():
+    from .registry import people_ops_ENTITIES
+    return people_ops_ENTITIES
+
+
+class HRService(PeopleOpsMixin):
     def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company",
                  backup_dir=None, extra_backup_dirs=(), keep=14, allow_new_journal=False, attachments=()):
         self.data_dir = data_dir
@@ -41,6 +49,8 @@ class HRService:
         self.journal = Journal(data_dir, self.device)
         self.registry = Registry(data_dir, company_id, company_code, company_name, journal=self.journal)
         self.auth = Auth(data_dir, self.journal)
+        self._load_policy()
+        self._eco_inbox = None
         self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep, attachments)
         self.journal.audit("system", "service.started", "system", {
             "device": self.device.device_id, "signing_backend": signing.BACKEND,
@@ -105,9 +115,12 @@ class HRService:
         never a silent overwrite)."""
         self._entity(entity)
         deciding = entity == "violation" and (fields.get("status") or "proposed") != "proposed"
-        # deciding a violation is its own right (hr.discipline.approve), apart from proposing it (separation of duties)
-        self.require(user, "hr.discipline.approve" if deciding else WRITE_PERM[entity], ip, f"{entity}:{code}")
         cur = self.registry.get(entity, code, org_type=fields.get("type") if entity == "org_unit" else None, include_deleted=True)
+        perm = "hr.discipline.approve" if deciding else WRITE_PERM[entity]     # deciding a violation is its own right, apart from proposing it (separation of duties)
+        if entity in people_ops_entities():
+            self.require(user, WRITE_PERM[entity], ip, f"{entity}:{code}")
+            perm, fields = self.people_fields(user, entity, cur if cur and not cur["deleted"] else None, fields, ip)   # who may decide what, and what comes from the session
+        self.require(user, perm, ip, f"{entity}:{code}")
         if cur and expected_ver is None:
             raise Conflict("ver.required", f"{entity} {code} exists: send the version you edited (expected_ver)")
         if not cur and expected_ver is not None:
@@ -153,6 +166,13 @@ class HRService:
             raise
         self.journal.audit("activity", event, user["code"], {"entity": entity, "code": code, "journal_seq": seq}, ip)
         return seq
+
+    def eco_inbox(self):
+        """What manufacturing tells HR (crew requirements, labour facts): one inbox per installation, opened when first needed."""
+        if self._eco_inbox is None:
+            from .eco_inbox import EcoInbox
+            self._eco_inbox = EcoInbox(self.data_dir, self.registry.company_id)
+        return self._eco_inbox
 
     @staticmethod
     def _entity(entity):

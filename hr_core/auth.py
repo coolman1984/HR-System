@@ -46,6 +46,17 @@ PERMISSIONS = {
     "hr.discipline.read": "See the penalty schedule, violations and decisions",
     "hr.discipline.write": "Keep the penalty schedule, propose violations from attendance or enter them",
     "hr.discipline.approve": "Decide violations: approve the penalty or waive it (final)",
+    "hr.recruitment.read": "See headcount plans, requisitions, candidates and onboarding",
+    "hr.recruitment.write": "Plan headcount, raise requisitions, keep candidates, hire and follow onboarding",
+    "hr.recruitment.approve": "Approve requisitions (never one's own)",
+    "hr.overtime.read": "See overtime requests, the overtime policy and the figures for payroll",
+    "hr.overtime.write": "Ask for overtime for people; keep the overtime policy",
+    "hr.overtime.approve": "Approve or reject overtime requests (never one's own)",
+    "hr.training.read": "See courses and training sessions",
+    "hr.training.write": "Define courses, plan sessions and record their results (a pass qualifies the person)",
+    "hr.leave.read": "See leave types, requests and balances",
+    "hr.leave.write": "Define leave types and enter leave requests",
+    "hr.leave.approve": "Approve or reject leave requests (never one's own)",
 }
 # Rights added after data version 0: hr_core/upgrade.py gives them to the built-in profiles of older installations.
 ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendance.upload", "admin.settings.manage"],
@@ -55,15 +66,21 @@ ADDED_IN_DATA_VERSION_2 = {"administrator": ["hr.shifts.read", "hr.shifts.write"
                            "viewer": ["hr.shifts.read", "hr.skills.read"], "auditor": ["hr.shifts.read", "hr.skills.read"]}
 ADDED_IN_DATA_VERSION_3 = {"administrator": ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"],
                            "hr_officer": ["hr.discipline.read", "hr.discipline.write"], "auditor": ["hr.discipline.read"]}
+ADDED_IN_DATA_VERSION_4 = {"administrator": ["hr.recruitment.read", "hr.recruitment.write", "hr.recruitment.approve", "hr.overtime.read", "hr.overtime.write", "hr.overtime.approve",
+                                          "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write", "hr.leave.approve"],
+                           "hr_officer": ["hr.recruitment.read", "hr.recruitment.write", "hr.overtime.read", "hr.overtime.write", "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write"],
+                           "viewer": ["hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"],
+                           "auditor": ["hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]}
 ADMIN_PERMS = {p for p in PERMISSIONS if p.startswith("admin.")}
 BUILTIN_PROFILES = {
     "administrator": ("Administrator", sorted(PERMISSIONS)),
     "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run",
                                  "hr.attendance.read", "hr.attendance.upload", "hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write",
-                                 "hr.discipline.read", "hr.discipline.write"]),
-    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read"]),
+                                 "hr.discipline.read", "hr.discipline.write", "hr.recruitment.read", "hr.recruitment.write", "hr.overtime.read", "hr.overtime.write",
+                                 "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write"]),
+    "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read", "hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]),
     "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read", "hr.shifts.read", "hr.skills.read",
-                         "hr.discipline.read"]),
+                         "hr.discipline.read", "hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]),
 }
 ITERATIONS = 600_000
 MIN_PASSWORD = 8

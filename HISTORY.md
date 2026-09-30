@@ -8,6 +8,47 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-30 — Ecosystem plan, WP-H1 to WP-H5: what manufacturing tells HR, recruitment, overtime, training, leave
+- **What:** the machine-key inbox (`POST /eco/v1/inbox`, `hr_core/eco_inbox.py`: crew requirements and labour facts from
+  GMES, applied once, newest version wins) with the staffing gap per day and shift (`GET /api/staffing/gap`) and the
+  labour evidence beside the plan (`GET /api/labour/evidence`); eleven new registers in the signed registry
+  (headcount plan, agency, hiring request, candidate, onboarding task, contract, overtime request, course, training
+  session, leave type, leave request) with their rules in `hr_core/people_ops.py` and `hr_core/people_service.py`; hire,
+  complete-a-session, propose-headcount, expire-contracts, leave balance, overtime figures and policy as commands;
+  eleven new rights (`hr.recruitment|overtime|training|leave.*`, data version 4 gives them to the built-in profiles);
+  fourteen screens in English and Arabic (`STF2010`, `REC1010`–`REC1060`, `OVT1010`, `OVT1020`, `TRN1010`, `TRN2010`,
+  `LEV1010`, `LEV2010`, `LEV3010`); `TEST_HR_PEOPLE_OPS.py` (60 checks); 19 new planted bugs. Modules `recruitment`,
+  `overtime` and `training` are now built. Payroll (WP-H6) stays design only.
+- **Why:** the ecosystem plan (`complete-company/plan/`) needs HR to hear what production needs, to hire and qualify
+  people for it, and to keep the overtime and leave figures payroll will need later, without any pay or personal data
+  leaving HR. Seen in a real browser (Chrome, synthetic company): all fourteen screens open with no script error, a
+  requisition is approved by a second user, a candidate goes applied → offered → hired (employee, contract and
+  onboarding created), an overtime request is approved.
+
+### Six planted bugs survived the first version of the tests
+- **Symptom:** running only the new planted bugs left six alive: a machine key without the scope, an older crew
+  requirement replacing a newer one, overtime and leave approved by the person who entered them, a course lowering a
+  higher qualification, and (as a planted bug that changed nothing) a shift filter that cannot differ.
+- **Cause:** the tests only tried the refusals that the missing right already produced (`perm.denied` comes first), never a
+  person who has the approve right and is also the author; there was one accepted scope; versions were tested as equal but
+  never as older; no test held a qualification above the course level.
+- **Fix:** checks added for each (`even_an_approver_cannot_approve_*`, `a_key_without_the_scope_is_refused`,
+  `an_older_version_never_replaces_a_newer_one`, `a_course_never_lowers_a_higher_qualification`); the planted bug that
+  could not change behaviour (`shift_code` is set only on working days) was replaced by one that can (a person of
+  another shift counted for shift A) and a second employee on the night shift joined the test.
+- **Lesson:** a planted bug that survives is a missing test or a mutant that changes nothing; decide which before adding
+  the check. A four-eyes rule needs a test where the author holds the right.
+
+### The documents check could not read the routes it was guarding
+- **Symptom:** `TEST_DOCS_CURRENT.py` failed on commit `412beea` (the crew-requirement inbox) at the first inventory line,
+  and after that would still have ignored every route written as a raw string or as `"/api/" + ENTITY_ROUTE`.
+- **Cause:** the route list was read with a regular expression for `@route("M", "pattern")`; routes with `r"..."`, and the
+  four register routes built from `ENTITY_ROUTE`, did not match, so they were neither required nor checked in `STATUS.md`.
+  The inbox commit also did not update the documents.
+- **Fix:** the test reads the decorators with `ast` and writes `ENTITY_ROUTE` out from `ENTITIES`; `STATUS.md`'s inventory
+  lists every route again (raw ones included).
+- **Lesson:** a guard that parses code with a regular expression stops guarding when the code style changes; parse it.
+
 ## 2026-09-28 — Ecosystem plan, Phase A: the installed product publishes to GMES by itself
 - **What:** Settings → Integration (GMES) (address, node, interval, write-only key, "Send now", last delivery, pending /
   delivered / refused, both languages) and `hr_core/eco_link.py`: a background thread inside the product, started by

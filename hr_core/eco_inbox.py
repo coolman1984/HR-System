@@ -22,7 +22,7 @@ import eco_contract
 
 from . import skills
 
-ACCEPTED = ("mes.crew_requirement.v1",)
+ACCEPTED = ("mes.crew_requirement.v1", "mes.labor_day.v1")
 SCOPES = ("eco.inbox.write",)
 
 SCHEMA = """
@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS crew_requirement (
   skills TEXT NOT NULL, version INTEGER NOT NULL, mrp_run TEXT NOT NULL, updated_at TEXT NOT NULL,
   UNIQUE (line_code, shift_code, work_date)
 );
+CREATE TABLE IF NOT EXISTS labor_day (
+  id TEXT PRIMARY KEY, employee_code TEXT NOT NULL, production_date TEXT NOT NULL, version INTEGER NOT NULL, total_minutes INTEGER NOT NULL,
+  entries TEXT NOT NULL, shift_code TEXT, updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS labor_day_date ON labor_day (production_date);
 """
 
 
@@ -125,7 +130,7 @@ class EcoInbox:
                 if self.db.execute("SELECT 1 FROM inbox WHERE source = ? AND event_id = ?", (src, eid)).fetchone():
                     self.db.execute("COMMIT")
                     return {"id": eid, "result": "duplicate"}
-                result = self._crew(env["data"])
+                result = self._crew(env["data"]) if env["type"] == "mes.crew_requirement.v1" else self._labor(env["data"])
                 self.db.execute("INSERT INTO inbox (source, event_id, type, result, received_at) VALUES (?, ?, ?, ?, ?)", (src, eid, env["type"], result, _now()))
                 self.db.execute("DELETE FROM inbox_reject WHERE source = ? AND event_id = ?", (src, eid))
                 self.db.execute("COMMIT")
@@ -145,6 +150,22 @@ class EcoInbox:
             "ON CONFLICT (id) DO UPDATE SET headcount = excluded.headcount, skills = excluded.skills, version = excluded.version, mrp_run = excluded.mrp_run, updated_at = excluded.updated_at",
             (d["id"], d["line"], d["shift"], d["work_date"], d["headcount"], json.dumps(d["skills"]), d["version"], d["mrp_run"]["code"], _now()))
         return "applied"
+
+    def _labor(self, d):
+        cur = self.db.execute("SELECT version FROM labor_day WHERE id = ?", (d["id"],)).fetchone()
+        if cur and d["version"] < cur["version"]:
+            return "stale"
+        if cur and d["version"] == cur["version"]:
+            return "unchanged"
+        self.db.execute(
+            "INSERT INTO labor_day (id, employee_code, production_date, version, total_minutes, entries, shift_code, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET version = excluded.version, total_minutes = excluded.total_minutes, entries = excluded.entries, shift_code = excluded.shift_code, updated_at = excluded.updated_at",
+            (d["id"], d["employee"]["code"], d["production_date"], d["version"], d["total_minutes"], json.dumps(d["entries"]), d.get("shift"), _now()))
+        return "applied"
+
+    def labour(self, first, last, employee=None):
+        sql = "SELECT * FROM labor_day WHERE production_date BETWEEN ? AND ?" + (" AND employee_code = ?" if employee else "") + " ORDER BY production_date, employee_code"
+        return [dict(r, entries=json.loads(r["entries"])) for r in self.db.execute(sql, (first, last, employee) if employee else (first, last))]
 
     def status(self):
         q = lambda sql: self.db.execute(sql).fetchone()[0]  # noqa: E731

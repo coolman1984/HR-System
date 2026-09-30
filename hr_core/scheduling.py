@@ -165,12 +165,20 @@ class Schedule:
             self.assignments.setdefault(a["employee_id"], []).append(a)
         for o in live("roster_override"):
             self.overrides[(o["employee_id"], o["work_date"])] = o
+        # approved leave (hr_core/people_ops.py): the person is not expected on those days
+        self.leaves = {}
+        for lv in live("leave_request"):
+            if lv["status"] == "approved":
+                self.leaves.setdefault(lv["employee_id"], []).append((lv["from_date"], lv["to_date"]))
 
     def day(self, employee_id, work_date):
         d = work_date if isinstance(work_date, str) else work_date.isoformat()
         emp = self.employees.get(employee_id)
         out = {"employee_id": employee_id, "employee_code": emp["code"] if emp else None, "work_date": d,
                "status": "unscheduled", "shift_code": None, "start": None, "end": None, "overnight": False, "paid_minutes": 0, "source": None}
+        if any(f <= d <= l for f, l in self.leaves.get(employee_id, ())):
+            out.update(status="leave", source="leave")
+            return out
         covering = [a for a in self.assignments.get(employee_id, []) if a["valid_from"] <= d and (not a.get("valid_to") or d <= a["valid_to"])]
         chosen = next((a for a in covering if a["kind"] == "temporary"), None) or next((a for a in covering if a["kind"] == "regular"), None)
         override = self.overrides.get((employee_id, d))
@@ -236,6 +244,8 @@ def compare(days, attendance_rows, employees):
         present = bool(status) and status.lower() in PRESENT
         if d["status"] == "work":
             verdict = "no_record" if r is None else "as_planned" if present else "leave" if status and "leave" in status.lower() else "absent"
+        elif d["status"] == "leave":
+            verdict = "worked_on_leave" if present else "on_leave"
         elif d["status"] in ("rest", "holiday"):
             verdict = "worked_off_day" if present else "off"
         else:

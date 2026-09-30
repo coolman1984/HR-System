@@ -161,14 +161,15 @@ function showPassword(forced) {
 async function refs(force) {
   if (S.refs && !force) return S.refs;
   const get = (e, perm) => (can(perm) ? api("GET", "/api/" + e).catch(() => []) : Promise.resolve([]));
-  const [units, jobs, positions, employees, shifts, calendars, skillList, rules] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"),
-    get("employee", "hr.employees.read"), get("shift", "hr.shifts.read"), get("work_calendar", "hr.shifts.read"), get("skill", "hr.skills.read"), get("penalty_rule", "hr.discipline.read")]);
-  const byId = new Map([...units, ...jobs, ...positions, ...employees, ...shifts, ...calendars, ...skillList, ...rules].map((r) => [r.id, r]));
-  const name = (r) => (r ? r.name || r.title || r.preferred_name || (r.job_id && byId.get(r.job_id) ? byId.get(r.job_id).title : "") || r.code : "");
+  const [units, jobs, positions, employees, shifts, calendars, skillList, rules, agencies, reqs, leaveTypes, courses] = await Promise.all([get("org_unit", "hr.org.read"), get("job", "hr.org.read"), get("position", "hr.org.read"),
+    get("employee", "hr.employees.read"), get("shift", "hr.shifts.read"), get("work_calendar", "hr.shifts.read"), get("skill", "hr.skills.read"), get("penalty_rule", "hr.discipline.read"),
+    get("agency", "hr.recruitment.read"), get("hire_requisition", "hr.recruitment.read"), get("leave_type", "hr.leave.read"), get("course", "hr.training.read")]);
+  const byId = new Map([...units, ...jobs, ...positions, ...employees, ...shifts, ...calendars, ...skillList, ...rules, ...agencies, ...reqs, ...leaveTypes, ...courses].map((r) => [r.id, r]));
+  const name = (r) => (r ? r.name || r.title || r.preferred_name || r.display_name || (r.job_id && byId.get(r.job_id) ? byId.get(r.job_id).title : "") || r.code : "");
   const label = (r) => (r ? r.code + " · " + name(r) : "");
   const unitOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.org_unit_id) : null; };
   const jobOf = (emp) => { const p = emp && byId.get(emp.position_id); return p ? byId.get(p.job_id) : null; };
-  S.refs = { units, jobs, positions, employees, shifts, calendars, skills: skillList, rules, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
+  S.refs = { units, jobs, positions, employees, shifts, calendars, skills: skillList, rules, agencies, reqs, leaveTypes, courses, byId, name, label, unitOf, jobOf, company: units.find((u) => u.type === "company") };
   return S.refs;
 }
 const changed = () => { S.refs = null; S.findings = null; };
@@ -196,6 +197,30 @@ const FORM = {
     ["threshold_minutes", { num: true, hint: "hint.threshold" }], ["window_days", { num: true, hint: "hint.window" }], ["active", { yesno: true }], ["steps", { req: true, ltr: true, span: 2, hint: "hint.steps" }]]]],
   violation: [["sec.violation", [["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["rule_id", { req: true, ref: (R) => R.rules, fixed: true }],
     ["work_date", { req: true, date: true, fixed: true }], ["minutes", { num: true }], ["note", { span: 2, hint: "hint.violation_note" }]]]],
+  // people operations (WP-H2 to WP-H5)
+  headcount_plan: [["sec.headcount_plan", [["code", { req: true, ltr: true, fixed: true }], ["period", { req: true, ltr: true, hint: "hint.period" }], ["job_id", { ref: (R) => R.jobs }], ["work_center_code", { ltr: true, hint: "hint.work_center" }],
+    ["org_unit_id", { ref: (R) => R.units.filter((u) => u.type === "department" || u.type === "section") }], ["planned_fte", { req: true, num: true }],
+    ["source", { req: true, choices: ["manual", "crew_requirement"], prefix: "value." }], ["note", { span: 2 }]]]],
+  agency: [["sec.agency", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["contact", {}], ["fee_percent", { num: true }], ["active", { yesno: true }]]]],
+  hire_requisition: [["sec.hire_requisition", [["code", { req: true, ltr: true, fixed: true }], ["job_id", { req: true, ref: (R) => R.jobs }], ["position_id", { ref: (R) => R.positions }], ["work_center_code", { ltr: true, hint: "hint.work_center" }],
+    ["count", { req: true, num: true }], ["employment_type", { req: true, choices: ["regular", "fixed_term", "agency", "intern"], prefix: "value." }], ["reason", { req: true, choices: ["crew_gap", "replacement", "growth", "seasonal"], prefix: "value." }],
+    ["needed_by", { req: true, date: true }], ["contract_months", { num: true, hint: "hint.contract_months" }], ["agency_id", { ref: (R) => R.agencies }], ["note", { span: 2, hint: "hint.over_plan" }]]]],
+  candidate: [["sec.candidate", [["code", { req: true, ltr: true, fixed: true }], ["requisition_id", { req: true, ref: (R) => R.reqs.filter((r) => r.status === "approved" || r.status === "open"), fixed: true }], ["display_name", { req: true }],
+    ["source", { req: true, choices: ["agency", "referral", "walk_in", "online"], prefix: "value." }], ["stage", { req: true, choices: ["applied", "screened", "interviewed", "offered", "rejected", "withdrawn"], prefix: "stage." }], ["note", { span: 2 }]]]],
+  onboarding_task: [["sec.onboarding_task", [["code", { req: true, ltr: true, fixed: true }], ["employee_id", { req: true, ref: (R) => R.employees, fixed: true }],
+    ["kind", { req: true, choices: ["medical", "badge", "ppe", "esd_training", "station_training", "contract_signed"], prefix: "onb." }], ["due", { date: true }], ["done_on", { date: true }]]]],
+  contract: [["sec.contract", [["code", { req: true, ltr: true, fixed: true }], ["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["employment_type", { req: true, choices: ["regular", "fixed_term", "agency", "intern"], prefix: "value." }],
+    ["start_date", { req: true, date: true }], ["end_date", { date: true }], ["agency_id", { ref: (R) => R.agencies }], ["reason", { span: 2 }]]]],
+  overtime_request: [["sec.overtime_request", [["code", { req: true, ltr: true, fixed: true }], ["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["work_date", { req: true, date: true, fixed: true }],
+    ["planned_minutes", { req: true, num: true }], ["kind", { req: true, choices: ["day", "night", "rest_day", "holiday"], prefix: "ot." }], ["reason", { req: true, span: 2 }]]]],
+  course: [["sec.course", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["skill_id", { ref: (R) => R.skills }], ["grants_level", { num: true, choices: ["1", "2", "3", "4"], prefix: "level." }],
+    ["validity_months", { num: true, hint: "hint.validity" }], ["duration_hours", { num: true }], ["mandatory_for", { choices: ["all_production"], prefix: "value." }],
+    ["onboarding_kind", { choices: ["esd_training", "station_training", "ppe", "medical"], prefix: "onb.", hint: "hint.onboarding_kind" }]]]],
+  training_session: [["sec.training_session", [["code", { req: true, ltr: true, fixed: true }], ["course_id", { req: true, ref: (R) => R.courses, fixed: true }], ["session_date", { req: true, date: true }], ["trainer", {}],
+    ["attendees", { req: true, ltr: true, span: 2, hint: "hint.attendees" }]]]],
+  leave_type: [["sec.leave_type", [["code", { req: true, ltr: true, fixed: true }], ["name", { req: true }], ["paid", { yesno: true }], ["annual_days", { num: true, hint: "hint.annual_days" }], ["carry_over_days", { num: true }], ["active", { yesno: true }]]]],
+  leave_request: [["sec.leave_request", [["code", { req: true, ltr: true, fixed: true }], ["employee_id", { req: true, ref: (R) => R.employees, fixed: true }], ["leave_type_id", { req: true, ref: (R) => R.leaveTypes, fixed: true }],
+    ["from_date", { req: true, date: true }], ["to_date", { req: true, date: true }], ["note", { span: 2 }]]]],
 };
 // records whose code is made from their content (one per person and day, per person and skill ...)
 const AUTO_CODE = {
@@ -231,7 +256,9 @@ async function editRecord(entity, row, preset = {}) {
   const out = h("div");
   return new Promise((resolve) => {
     ui.dialog({ title: row ? t("edit_title", { code: row.code }) : t("new." + entity), subtitle: row ? t("hint.version", { ver: row.ver }) : null,
-      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card", shift: "clock", work_calendar: "calendar", shift_assignment: "calendar-check", skill: "tag", employee_skill: "shield", penalty_rule: "scale", violation: "flag" }[entity],
+      icon: { employee: "user", org_unit: "sitemap", job: "briefcase", position: "id-card", shift: "clock", work_calendar: "calendar", shift_assignment: "calendar-check", skill: "tag", employee_skill: "shield", penalty_rule: "scale", violation: "flag",
+        headcount_plan: "chart", agency: "building", hire_requisition: "clipboard", candidate: "user-plus", onboarding_task: "clipboard-check", contract: "id-card", overtime_request: "clock", course: "bookmark", training_session: "calendar-check",
+        leave_type: "tag", leave_request: "calendar" }[entity],
       width: entity === "employee" ? 680 : 560,
       body: h("div", { class: "hr-editor" }, guideAtLeast("full") && has("tip." + entity) ? ui.banner("info", t("tip." + entity), { title: t("guide.tip") }) : null, sections, out), onClose: (r) => resolve(r === true),
       actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
@@ -632,14 +659,23 @@ function registerScreen(entity, code, titleKey, columns, opts = {}) {
     let R = null;
     const detail = h("div", { class: "hr-detail" });
     const g = ui.grid(columns(() => R), { rowKey: "id", selection: "multi", totals: true, layoutKey: code, emptyText: t("empty"),
-      onSelect: (sel) => { act.edit.disabled = sel.length !== 1 || !can(o.write); act.bin.disabled = !sel.length || !can("hr.employees.delete"); drawDetail(sel[0]); },
+      onSelect: (sel) => {
+        act.edit.disabled = sel.length !== 1 || !can(o.write); act.bin.disabled = !sel.length || !can("hr.employees.delete"); drawDetail(sel[0]);
+        for (const { a, b } of custom) b.disabled = sel.length !== 1 || !can(a.perm || o.write) || !!(a.when && !a.when(sel[0], R));
+      },
       onOpen: (r) => can(o.write) && editRecord(entity, r).then((ok) => ok && load()) });
     const act = {
-      add: ui.button({ label: t("new." + entity), icon: "plus", kind: "primary", disabled: !can(o.write), onClick: () => editRecord(entity, null).then((ok) => ok && load()) }),
+      add: ui.button({ label: t("new." + entity), icon: "plus", kind: "primary", disabled: !can(o.write), onClick: async () => { const preset = o.preset ? await o.preset(R) : {}; if (await editRecord(entity, null, preset)) load(); } }),
       edit: ui.button({ label: t("edit"), icon: "edit", disabled: true, onClick: () => editRecord(entity, g.selected()[0]).then((ok) => ok && load()) }),
       bin: ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: () => binRecords(entity, g.selected()).then((ok) => ok && load()) }),
     };
-    const sc = screen({ code, title: t(titleKey), path: [t(o.group)], shell, toolbar: [act.add, act.edit, act.bin],
+    // buttons that act on the selected record (approve, hire, complete ...): shown disabled until a record they apply to is selected
+    const custom = (o.actions || []).map((a) => {
+      const b = ui.button({ label: t(a.label), icon: a.icon, kind: a.kind || "default", disabled: true, onClick: () => a.run(g.selected()[0], { R, reload: () => load(), sc }) });
+      return { a, b };
+    });
+    const tools = (o.tools || []).map((x) => ui.button({ label: t(x.label), icon: x.icon, disabled: !can(x.perm), onClick: () => x.run({ R, reload: () => load() }) }));
+    const sc = screen({ code, title: t(titleKey), path: [t(o.group)], shell, toolbar: [act.add, act.edit, ...custom.map((c) => c.b), ...tools, act.bin],
       standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV(entity), exportLabel: t("export"), columns: () => g.columnsDialog() }, grid: g, detail, detailKey: code + ":detail" });
     function drawDetail(r) {
       if (!r) { ui.clear(detail, ui.empty({ icon: o.icon || (entity === "job" ? "briefcase" : "id-card"), title: t("pick.one") })); return; }
@@ -652,7 +688,7 @@ function registerScreen(entity, code, titleKey, columns, opts = {}) {
     async function load() {
       const t0 = performance.now();
       g.setLoading();
-      try { R = await refs(true); g.setRows(o.rows(R)); sc.result({ ms: Math.round(performance.now() - t0) }); drawDetail(null); }
+      try { R = await refs(true); g.setRows(o.fetch ? await api("GET", "/api/" + entity) : o.rows(R)); sc.result({ ms: Math.round(performance.now() - t0) }); drawDetail(null); }
       catch (e) { g.setError(e.message); }
     }
     load();
@@ -1251,7 +1287,9 @@ function advisorScreen({ shell }) {
 
 const PERM_GROUPS = [["perm_group.people",["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
   ["perm_group.organisation", ["hr.org.read", "hr.org.write"]], ["perm_group.attendance", ["hr.attendance.read", "hr.attendance.upload"]],
-  ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]], ["perm_group.discipline", ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"]],
+  ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.recruitment", ["hr.recruitment.read", "hr.recruitment.write", "hr.recruitment.approve"]],
+  ["perm_group.overtime", ["hr.overtime.read", "hr.overtime.write", "hr.overtime.approve"]], ["perm_group.training", ["hr.training.read", "hr.training.write"]],
+  ["perm_group.leave", ["hr.leave.read", "hr.leave.write", "hr.leave.approve"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]], ["perm_group.discipline", ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"]],
     ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
 function profilesScreen({ shell }) {
   let profiles = [], users = [], current = null, work = null;
@@ -1713,6 +1751,207 @@ async function recordWarnings(code) {
 }
 
 // ------------------------------------------------------------------ the shell
+// ------------------------------------------------------------------ People operations (WP-H2 to WP-H5): recruitment, overtime, training, leave
+const nextCode = (prefix, rows, width = 4) => { let n = 0; for (const r of rows) { const m = new RegExp("^" + prefix + "(\\d+)$").exec(r.code); if (m) n = Math.max(n, Number(m[1])); } return prefix + String(n + 1).padStart(width, "0"); };
+const presetCode = (entity, prefix, extra = {}) => async () => ({ code: nextCode(prefix, await api("GET", "/api/" + entity + "?deleted=1")), ...extra });
+const jobName = (R, r) => (R() && R().byId.get(r.job_id) ? R().byId.get(r.job_id).title : "");
+const empLabel = (R, id) => (R() ? R().label(R().byId.get(id)) : "");
+/** A button that changes one field of the selected record (the approve / reject / cancel of a workflow); the server decides who may. */
+const changeAction = (entity, fields, label, icon, perm, when, kind) => ({ key: entity + label, label, icon, perm, kind, when,
+  run: async (r, ctx) => { try { await api("PUT", "/api/" + entity + "/" + encodeURIComponent(r.code), { fields: typeof fields === "function" ? fields(r) : fields, expected_ver: r.ver }); changed(); ui.toast({ kind: "ok", title: t("saved"), text: r.code }); ctx.reload(); } catch (e) { fail(e); } } });
+const badgeOf = (v, kinds) => (v ? ui.badge(value(v), (kinds && kinds[v]) || "neutral") : "");
+const STATE_KIND = { draft: "neutral", approved: "info", open: "info", filled: "ok", cancelled: "neutral", requested: "warn", rejected: "bad" };
+
+const headcountScreen = registerScreen("headcount_plan", "REC1010", "nav.headcount", (R) => [
+  { key: "code", label: t("field.code"), type: "code", width: 170, frozen: true, total: "count" }, { key: "period", label: t("field.period"), type: "code", width: 90 },
+  { key: "job", label: t("field.job_id"), width: 170, value: (r) => jobName(R, r) }, { key: "work_center_code", label: t("field.work_center_code"), type: "code", width: 130 },
+  { key: "planned_fte", label: t("field.planned_fte"), type: "number", width: 110, total: "sum" }, { key: "source", label: t("field.source"), width: 150, value: (r) => value(r.source) }, { key: "note", label: t("field.note"), width: 300 },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "chart", preset: () => ({ source: "manual" }),
+  tools: [{ label: "rec.propose", icon: "sparkles", perm: "hr.recruitment.write", run: (ctx) => proposeHeadcount(ctx) }] });
+async function proposeHeadcount(ctx) {
+  const out = h("div");
+  try {
+    const r = await api("POST", "/api/recruitment/propose-headcount", { apply: false });
+    if (!r.proposals.length) { ui.toast({ kind: "info", title: t("rec.propose"), text: t("rec.propose_none") }); return; }
+    ui.dialog({ title: t("rec.propose"), icon: "sparkles", width: 640, body: h("div", { class: "hr-stack" }, h("p", { class: "eco-dialog-text", text: t("rec.propose_help") }),
+      ui.props(r.proposals.map((p) => [p.work_center_code + " · " + p.period, t("rec.propose_line", { avg: p.average_required, fte: p.planned_fte, days: p.days })])), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("rec.propose_save"), kind: "primary", icon: "save", onClick: async () => {
+      try { const s = await api("POST", "/api/recruitment/propose-headcount", { apply: true }); ui.toast({ kind: "ok", title: t("saved"), text: t("rec.propose_saved", { n: s.saved.length }) }); ctx.reload(); return true; }
+      catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  } catch (e) { fail(e); }
+}
+const agenciesScreen = registerScreen("agency", "REC1050", "nav.agencies", () => [
+  { key: "code", label: t("field.code"), type: "code", width: 110, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 }, { key: "contact", label: t("field.contact"), width: 200 },
+  { key: "fee_percent", label: t("field.fee_percent"), type: "number", width: 100 }, { key: "active", label: t("field.active"), width: 90, value: (r) => (r.active === 0 ? t("no") : t("yes")) },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "building", preset: () => ({ active: 1 }) });
+const requisitionsScreen = registerScreen("hire_requisition", "REC1020", "nav.requisitions", (R) => [
+  { key: "status", label: t("field.status"), width: 110, frozen: true, render: (r) => badgeOf(r.status, STATE_KIND), value: (r) => value(r.status) }, { key: "code", label: t("field.code"), type: "code", width: 110 },
+  { key: "job", label: t("field.job_id"), width: 170, value: (r) => jobName(R, r) }, { key: "count", label: t("field.count"), type: "number", width: 80, total: "sum" }, { key: "filled", label: t("field.filled"), type: "number", width: 80, total: "sum" },
+  { key: "employment_type", label: t("field.employment_type"), width: 120, value: (r) => value(r.employment_type) }, { key: "reason", label: t("field.reason"), width: 120, value: (r) => value(r.reason) },
+  { key: "needed_by", label: t("field.needed_by"), type: "date", width: 110 }, { key: "approved_by", label: t("field.approved_by"), type: "code", width: 110 }, { key: "note", label: t("field.note"), width: 260 },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "clipboard", preset: presetCode("hire_requisition", "REQ-", { employment_type: "regular", reason: "crew_gap" }),
+  actions: [changeAction("hire_requisition", { status: "approved" }, "act.approve", "check", "hr.recruitment.approve", (r) => r.status === "draft", "primary"),
+    changeAction("hire_requisition", { status: "open" }, "act.open", "play", "hr.recruitment.approve", (r) => r.status === "approved"),
+    changeAction("hire_requisition", { status: "cancelled" }, "act.cancel", "x", "hr.recruitment.write", (r) => ["draft", "approved", "open"].includes(r.status))] });
+const candidatesScreen = registerScreen("candidate", "REC1030", "nav.candidates", (R) => [
+  { key: "stage", label: t("field.stage"), width: 130, frozen: true, render: (r) => badgeOf(r.stage, { hired: "ok", offered: "info", rejected: "bad", withdrawn: "neutral" }), value: (r) => t("stage." + r.stage) },
+  { key: "code", label: t("field.code"), type: "code", width: 110 }, { key: "display_name", label: t("field.display_name"), width: 200 },
+  { key: "requisition", label: t("field.requisition_id"), width: 130, value: (r) => (R() && R().byId.get(r.requisition_id) ? R().byId.get(r.requisition_id).code : "") },
+  { key: "source", label: t("field.source"), width: 110, value: (r) => value(r.source) }, { key: "stage_date", label: t("field.stage_date"), type: "date", width: 110 }, { key: "note", label: t("field.note"), width: 260 },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "user-plus", preset: presetCode("candidate", "CAN-", { source: "referral", stage: "applied" }),
+  actions: [{ key: "advance", label: "act.advance", icon: "chev-right", kind: "primary", perm: "hr.recruitment.write", when: (r) => ["applied", "screened", "interviewed"].includes(r.stage),
+    run: (r, ctx) => changeAction("candidate", { stage: { applied: "screened", screened: "interviewed", interviewed: "offered" }[r.stage] }, "", "", "", null).run(r, ctx) },
+  changeAction("candidate", { stage: "rejected" }, "act.reject", "x", "hr.recruitment.write", (r) => ["applied", "screened", "interviewed", "offered"].includes(r.stage)),
+  { key: "hire", label: "act.hire", icon: "user-plus", kind: "primary", perm: "hr.recruitment.write", when: (r) => r.stage === "offered", run: (r, ctx) => hireDialog(r, ctx) }] });
+function hireDialog(cand, ctx) {
+  const R = ctx.R, req = R.byId.get(cand.requisition_id) || {};
+  const date = ui.input({ type: "date", value: localToday() }), end = ui.input({ type: "date" });
+  const type = ui.select({ options: ["regular", "fixed_term", "agency", "intern"].map((v) => [v, value(v)]), value: req.employment_type || "regular" });
+  const position = ui.select({ options: R.positions.map((p) => [p.id, R.label(p)]), placeholder: "—", value: req.position_id || "" });
+  const out = h("div");
+  ui.dialog({ title: t("act.hire") + " · " + cand.display_name, subtitle: req.code || "", icon: "user-plus", width: 560,
+    body: h("div", { class: "hr-stack" }, ui.banner("info", t("rec.hire_help")), h("div", { class: "eco-form" }, ui.field(t("field.hire_date"), date, { required: true }), ui.field(t("field.employment_type"), type),
+      ui.field(t("field.position_id"), position), ui.field(t("field.end_date"), end, { hint: t("hint.contract_end") })), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("act.hire"), kind: "primary", icon: "user-plus", onClick: async () => {
+      try {
+        const r = await api("POST", "/api/recruitment/candidates/" + encodeURIComponent(cand.code) + "/hire", { hire_date: date.value, employment_type: type.value, position_id: position.value || null, contract_end: end.value || null });
+        changed(); ui.toast({ kind: "ok", title: t("rec.hired", { code: r.employee }), text: t("rec.hired_help"), keep: true }); ctx.reload(); return true;
+      } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+}
+const onboardingScreen = registerScreen("onboarding_task", "REC1040", "nav.onboarding", (R) => [
+  { key: "done", label: t("field.status"), width: 110, frozen: true, render: (r) => (r.done_on ? ui.badge(t("onb.done"), "ok") : ui.badge(t("onb.open"), "warn")), value: (r) => (r.done_on ? t("onb.done") : t("onb.open")) },
+  { key: "employee", label: t("field.employee_id"), width: 220, value: (r) => empLabel(R, r.employee_id) }, { key: "kind", label: t("field.kind"), width: 170, value: (r) => t("onb." + r.kind) },
+  { key: "due", label: t("field.due"), type: "date", width: 110 }, { key: "done_on", label: t("field.done_on"), type: "date", width: 110 },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "clipboard-check",
+  actions: [changeAction("onboarding_task", () => ({ done_on: localToday() }), "act.mark_done", "check", "hr.recruitment.write", (r) => !r.done_on, "primary")] });
+const contractsScreen = registerScreen("contract", "REC1060", "nav.contracts", (R) => [
+  { key: "code", label: t("field.code"), type: "code", width: 130, frozen: true, total: "count" }, { key: "employee", label: t("field.employee_id"), width: 220, value: (r) => empLabel(R, r.employee_id) },
+  { key: "employment_type", label: t("field.employment_type"), width: 120, value: (r) => value(r.employment_type) }, { key: "start_date", label: t("field.start_date"), type: "date", width: 110 },
+  { key: "end_date", label: t("field.end_date"), type: "date", width: 110 }, { key: "reason", label: t("field.reason"), width: 200 },
+], { write: "hr.recruitment.write", group: "g.recruitment", fetch: true, people: false, icon: "id-card",
+  tools: [{ label: "rec.expire", icon: "history", perm: "hr.recruitment.write", run: async (ctx) => { try { const r = await api("POST", "/api/recruitment/expire-contracts", {}); changed(); ui.toast({ kind: "ok", title: t("rec.expired", { n: r.ended.length }) }); ctx.reload(); } catch (e) { fail(e); } } }] });
+
+const overtimeScreen = registerScreen("overtime_request", "OVT1010", "nav.overtime", (R) => [
+  { key: "status", label: t("field.status"), width: 110, frozen: true, render: (r) => badgeOf(r.status, STATE_KIND), value: (r) => value(r.status) }, { key: "code", label: t("field.code"), type: "code", width: 100 },
+  { key: "employee", label: t("field.employee_id"), width: 220, value: (r) => empLabel(R, r.employee_id) }, { key: "work_date", label: t("plan.day"), type: "date", width: 110 },
+  { key: "planned_minutes", label: t("field.planned_minutes"), type: "number", width: 110, total: "sum" }, { key: "kind", label: t("field.kind"), width: 110, value: (r) => t("ot." + r.kind) },
+  { key: "reason", label: t("field.reason"), width: 240 }, { key: "requested_by", label: t("field.requested_by"), type: "code", width: 110 }, { key: "approved_by", label: t("field.approved_by"), type: "code", width: 110 },
+], { write: "hr.overtime.write", group: "g.overtime", fetch: true, people: false, icon: "clock", preset: presetCode("overtime_request", "OT-", { kind: "day" }),
+  actions: [changeAction("overtime_request", { status: "approved" }, "act.approve", "check", "hr.overtime.approve", (r) => r.status === "requested", "primary"),
+    changeAction("overtime_request", { status: "rejected" }, "act.reject", "x", "hr.overtime.approve", (r) => r.status === "requested")] });
+function overtimeFiguresScreen({ shell }) {
+  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: localToday().slice(0, 7) }], { key: "OVT1020", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "employee", label: t("field.employee_id"), type: "code", width: 110, frozen: true, total: "count" },
+    ...["day", "night", "rest_day", "holiday"].map((k) => ({ key: k, label: t("ot." + k), type: "number", width: 100, total: "sum", value: (r) => r.minutes[k] })),
+    { key: "total_minutes", label: t("ovt.total"), type: "number", width: 100, total: "sum" },
+    { key: "premium", label: t("ovt.premium"), width: 250, value: (r) => `${r.premium_bp.day / 100}% · ${r.premium_bp.night / 100}% · ${r.premium_bp.rest_day / 100}% · ${r.premium_bp.holiday / 100}%` },
+    { key: "substitute_days", label: t("ovt.substitute"), type: "number", width: 120, total: "sum" },
+  ], { rowKey: "employee", selection: "single", totals: true, layoutKey: "OVT1020", emptyText: t("empty") });
+  const notes = h("div", { class: "hr-pad" });
+  const sc = screen({ code: "OVT1020", title: t("nav.overtime_figures"), path: [t("g.overtime")], shell,
+    toolbar: [ui.button({ label: t("ovt.policy"), icon: "settings", disabled: !can("hr.overtime.read"), onClick: () => policyDialog() })],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("overtime"), exportLabel: t("export"), columns: () => g.columnsDialog() }, conditions: conds, grid: g, note: notes });
+  async function load() {
+    g.setLoading();
+    try {
+      const r = await api("GET", "/api/overtime/figures?period=" + encodeURIComponent(conds.values().period || localToday().slice(0, 7)));
+      g.setRows(r.employees);
+      ui.clear(notes, ui.banner("info", r.policy.source_note), r.exceptions.length ? ui.banner("warn", t("ovt.exceptions", { n: r.exceptions.length }) + ": " + r.exceptions.map((x) => `${x.employee} ${x.date} (${x.minutes})`).join(" · ")) : null);
+      sc.result({ chips: conds.chips() });
+    } catch (e) { g.setError(e.message); }
+  }
+  async function policyDialog() {
+    const p = await api("GET", "/api/overtime/policy");
+    const keys = ["premium_day_bp", "premium_night_bp", "rest_day_premium_bp", "holiday_premium_bp", "night_allowance_bp", "max_daily_minutes_incl_ot", "max_weekly_ot_minutes", "max_monthly_ot_minutes", "night_from", "night_to"];
+    const inputs = Object.fromEntries(keys.map((k) => [k, ui.input({ value: String(p[k]), dir: "ltr" })]));
+    const out = h("div");
+    ui.dialog({ title: t("ovt.policy"), icon: "settings", width: 620, body: h("div", { class: "hr-stack" }, ui.banner("warn", p.source_note), h("div", { class: "eco-form" }, keys.map((k) => ui.field(t("policy." + k), inputs[k]))), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", disabled: !can("hr.overtime.approve"), onClick: async () => {
+        const body = Object.fromEntries(keys.map((k) => [k, k === "night_from" || k === "night_to" ? inputs[k].value : Number(inputs[k].value)]));
+        try { await api("PUT", "/api/overtime/policy", body); ui.toast({ kind: "ok", title: t("saved") }); load(); return true; } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  load();
+  return { el: sc.el };
+}
+
+const coursesScreen = registerScreen("course", "TRN1010", "nav.courses", (R) => [
+  { key: "code", label: t("field.code"), type: "code", width: 110, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 },
+  { key: "skill", label: t("field.skill_id"), width: 170, value: (r) => (R() && R().byId.get(r.skill_id) ? R().label(R().byId.get(r.skill_id)) : "") },
+  { key: "grants_level", label: t("field.grants_level"), type: "number", width: 90 }, { key: "validity_months", label: t("field.validity_months"), type: "number", width: 100 },
+  { key: "duration_hours", label: t("field.duration_hours"), type: "number", width: 100 }, { key: "onboarding_kind", label: t("field.onboarding_kind"), width: 150, value: (r) => (r.onboarding_kind ? t("onb." + r.onboarding_kind) : "") },
+], { write: "hr.training.write", group: "g.training", fetch: true, people: false, icon: "bookmark" });
+const sessionsScreen = registerScreen("training_session", "TRN2010", "nav.sessions", (R) => [
+  { key: "status", label: t("field.status"), width: 110, frozen: true, render: (r) => badgeOf(r.status, { done: "ok", planned: "info", cancelled: "neutral" }), value: (r) => value(r.status) }, { key: "code", label: t("field.code"), type: "code", width: 110 },
+  { key: "course", label: t("field.course_id"), width: 200, value: (r) => (R() && R().byId.get(r.course_id) ? R().label(R().byId.get(r.course_id)) : "") }, { key: "session_date", label: t("field.session_date"), type: "date", width: 110 },
+  { key: "trainer", label: t("field.trainer"), width: 150 }, { key: "attendees", label: t("field.attendees"), width: 300, value: (r) => attendeesText(r) },
+], { write: "hr.training.write", group: "g.training", fetch: true, people: false, icon: "calendar-check", preset: presetCode("training_session", "TS-", { session_date: localToday() }),
+  actions: [{ key: "complete", label: "act.complete", icon: "check", kind: "primary", perm: "hr.training.write", when: (r) => r.status === "planned", run: (r, ctx) => completeDialog(r, ctx) }] });
+function attendeesOf(r) { try { const a = JSON.parse(r.attendees || "[]"); return a.map((x) => (typeof x === "string" ? { employee_code: x } : x)); } catch (_) { return []; } }
+const attendeesText = (r) => attendeesOf(r).map((a) => a.employee_code + (a.result ? " (" + t("result." + a.result) + ")" : "")).join(", ");
+function completeDialog(sess, ctx) {
+  const people = attendeesOf(sess), picks = people.map((a) => ui.select({ options: [["pass", t("result.pass")], ["fail", t("result.fail")]], value: "pass" })), out = h("div");
+  ui.dialog({ title: t("act.complete") + " · " + sess.code, subtitle: sess.session_date, icon: "check", width: 520,
+    body: h("div", { class: "hr-stack" }, ui.banner("info", t("trn.complete_help")), h("div", { class: "eco-form" }, people.map((a, i) => ui.field(a.employee_code, picks[i]))), out),
+    actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("act.complete"), kind: "primary", icon: "check", onClick: async () => {
+      try {
+        const r = await api("POST", "/api/training/sessions/" + encodeURIComponent(sess.code) + "/complete", { results: people.map((a, i) => ({ employee_code: a.employee_code, result: picks[i].value })) });
+        changed(); ui.toast({ kind: "ok", title: t("trn.completed", { n: r.qualified.length }), keep: true }); ctx.reload(); return true;
+      } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+}
+
+const leaveTypesScreen = registerScreen("leave_type", "LEV1010", "nav.leave_types", () => [
+  { key: "code", label: t("field.code"), type: "code", width: 110, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 }, { key: "paid", label: t("field.paid"), width: 80, value: (r) => (r.paid === 0 ? t("no") : t("yes")) },
+  { key: "annual_days", label: t("field.annual_days"), type: "number", width: 110 }, { key: "carry_over_days", label: t("field.carry_over_days"), type: "number", width: 120 }, { key: "active", label: t("field.active"), width: 80, value: (r) => (r.active === 0 ? t("no") : t("yes")) },
+], { write: "hr.leave.write", group: "g.leave", fetch: true, people: false, icon: "tag", preset: () => ({ paid: 1, active: 1 }) });
+const leaveRequestsScreen = registerScreen("leave_request", "LEV2010", "nav.leave_requests", (R) => [
+  { key: "status", label: t("field.status"), width: 110, frozen: true, render: (r) => badgeOf(r.status, STATE_KIND), value: (r) => value(r.status) }, { key: "code", label: t("field.code"), type: "code", width: 100 },
+  { key: "employee", label: t("field.employee_id"), width: 220, value: (r) => empLabel(R, r.employee_id) }, { key: "type", label: t("field.leave_type_id"), width: 150, value: (r) => (R() && R().byId.get(r.leave_type_id) ? R().byId.get(r.leave_type_id).name : "") },
+  { key: "from_date", label: t("field.from_date"), type: "date", width: 110 }, { key: "to_date", label: t("field.to_date"), type: "date", width: 110 }, { key: "days", label: t("field.days"), type: "number", width: 70, total: "sum" },
+  { key: "approver", label: t("field.approver"), type: "code", width: 110 }, { key: "note", label: t("field.note"), width: 220 },
+], { write: "hr.leave.write", group: "g.leave", fetch: true, people: false, icon: "calendar", preset: presetCode("leave_request", "LV-"),
+  actions: [changeAction("leave_request", { status: "approved" }, "act.approve", "check", "hr.leave.approve", (r) => r.status === "requested", "primary"),
+    changeAction("leave_request", { status: "rejected" }, "act.reject", "x", "hr.leave.approve", (r) => r.status === "requested"),
+    changeAction("leave_request", { status: "cancelled" }, "act.cancel", "x", "hr.leave.write", (r) => r.status === "requested" || r.status === "approved")] });
+function leaveBalanceScreen({ shell }) {
+  let R = null;
+  const conds = ui.conditionPanel([{ key: "employee", label: t("field.employee_id"), type: "select", options: [], required: true }, { key: "year", label: t("field.year"), default: localToday().slice(0, 4) }], { key: "LEV3010", onSubmit: () => load() });
+  const g = ui.grid([{ key: "leave_type", label: t("field.leave_type_id"), type: "code", width: 130, frozen: true }, { key: "name", label: t("field.name"), width: 220 },
+    { key: "entitlement", label: t("lev.entitlement"), type: "number", width: 110, value: (r) => (r.entitlement === null ? "—" : r.entitlement) }, { key: "used", label: t("lev.used"), type: "number", width: 90 },
+    { key: "left", label: t("lev.left"), type: "number", width: 90, value: (r) => (r.left === null ? "—" : r.left) }], { rowKey: "leave_type", selection: "single", layoutKey: "LEV3010", emptyText: t("empty") });
+  const sc = screen({ code: "LEV3010", title: t("nav.leave_balance"), path: [t("g.leave")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh" }, conditions: conds, grid: g });
+  async function load() {
+    const v = conds.values();
+    if (!v.employee) return;
+    g.setLoading();
+    try { const r = await api("GET", `/api/leave/balance?employee=${encodeURIComponent(v.employee)}&year=${encodeURIComponent(v.year || localToday().slice(0, 4))}`); g.setRows(r.balances); sc.result({ chips: conds.chips() }); }
+    catch (e) { g.setError(e.message); }
+  }
+  refs().then((r) => { R = r; const sel = conds.control("employee"); for (const e of r.employees) sel.append(h("option", { value: e.code, text: R.label(e) })); load(); });
+  return { el: sc.el };
+}
+
+function staffingScreen({ shell }) {
+  const today = localToday();
+  const conds = ui.conditionPanel([{ key: "days", label: t("cmp.period"), type: "daterange", required: true, default: [today, addDays(today, 13)], span: 2 }], { key: "STF2010", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "date", label: t("plan.day"), type: "date", width: 110, frozen: true }, { key: "shift", label: t("field.shift_id"), type: "code", width: 80 },
+    { key: "lines", label: t("stf.lines"), width: 240, value: (r) => r.lines.map((l) => `${l.line} ${l.headcount}`).join(" · ") },
+    { key: "required", label: t("stf.required"), type: "number", width: 100, total: "sum" }, { key: "scheduled", label: t("stf.scheduled"), type: "number", width: 100, total: "sum" },
+    { key: "gap", label: t("stf.gap"), type: "number", width: 90, total: "sum", render: (r) => (r.gap ? h("span", { class: "hr-bad", text: String(r.gap) }) : "0") },
+    { key: "skills", label: t("stf.skills"), width: 380, value: (r) => r.skills.map((s) => `${s.skill} L${s.level}: ${s.covered}/${s.required}`).join(" · ") },
+  ], { rowKey: (r) => r.date + r.shift, selection: "single", totals: true, layoutKey: "STF2010", emptyText: t("stf.empty"), rowStatus: (r) => (r.gap ? "down" : null) });
+  const sc = screen({ code: "STF2010", title: t("nav.staffing"), path: [t("g.planning")], shell, standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", reset: () => { conds.reset(); load(); }, resetLabel: t("reset"), export: () => g.exportCSV("staffing"), exportLabel: t("export"), columns: () => g.columnsDialog() },
+    conditions: conds, grid: g, note: h("div", { class: "hr-pad" }, ui.banner("info", t("stf.note"))) });
+  async function load() {
+    const v = conds.values();
+    g.setLoading();
+    try { g.setRows(await api("GET", `/api/staffing/gap?from=${v.days[0]}&to=${v.days[1]}`)); sc.result({ chips: conds.chips() }); } catch (e) { g.setError(e.message); }
+  }
+  load();
+  return { el: sc.el };
+}
+
 const SCREENS = {
   HOME: ["nav.home", "dashboard", null, dashboardScreen],
   ADV1010: ["nav.advisor", "clipboard-check", null, advisorScreen],
@@ -1727,6 +1966,20 @@ const SCREENS = {
   SHF1010: ["nav.shifts", "clock", "hr.shifts.read", shiftsScreen],
   SHF1020: ["nav.calendars", "calendar", "hr.shifts.read", calendarsScreen],
   SHF3020: ["nav.compare", "activity", "hr.shifts.read", compareScreen],
+  STF2010: ["nav.staffing", "alert", "hr.shifts.read", staffingScreen],
+  REC1010: ["nav.headcount", "chart", "hr.recruitment.read", headcountScreen],
+  REC1020: ["nav.requisitions", "clipboard", "hr.recruitment.read", requisitionsScreen],
+  REC1030: ["nav.candidates", "user-plus", "hr.recruitment.read", candidatesScreen],
+  REC1040: ["nav.onboarding", "clipboard-check", "hr.recruitment.read", onboardingScreen],
+  REC1050: ["nav.agencies", "building", "hr.recruitment.read", agenciesScreen],
+  REC1060: ["nav.contracts", "id-card", "hr.recruitment.read", contractsScreen],
+  OVT1010: ["nav.overtime", "clock", "hr.overtime.read", overtimeScreen],
+  OVT1020: ["nav.overtime_figures", "table", "hr.overtime.read", overtimeFiguresScreen],
+  TRN1010: ["nav.courses", "bookmark", "hr.training.read", coursesScreen],
+  TRN2010: ["nav.sessions", "calendar-check", "hr.training.read", sessionsScreen],
+  LEV2010: ["nav.leave_requests", "calendar", "hr.leave.read", leaveRequestsScreen],
+  LEV3010: ["nav.leave_balance", "table", "hr.leave.read", leaveBalanceScreen],
+  LEV1010: ["nav.leave_types", "tag", "hr.leave.read", leaveTypesScreen],
   SKL3010: ["nav.matrix", "table", "hr.skills.read", matrixScreen],
   SKL2010: ["nav.qualifications", "shield", "hr.skills.read", qualificationsScreen],
   SKL1010: ["nav.skills", "tag", "hr.skills.read", skillsScreen],
@@ -1740,7 +1993,8 @@ const SCREENS = {
   SYS9060: ["nav.settings", "settings", "admin.settings.manage", settingsScreen],
   HLP1010: ["nav.help", "bookmark", null, helpCenterScreen],
 };
-const MENU = [["people", "users", ["EMP1010", "EMP2010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["discipline", "scale", ["DSC2010", "DSC1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060", "HLP1010"]]];
+const MENU = [["people", "users", ["EMP1010", "EMP2010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020", "STF2010"]],
+  ["recruitment", "user-plus", ["REC1010", "REC1020", "REC1030", "REC1040", "REC1060", "REC1050"]], ["overtime", "clock", ["OVT1010", "OVT1020"]], ["training", "bookmark", ["TRN2010", "TRN1010"]], ["leave", "calendar", ["LEV2010", "LEV3010", "LEV1010"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["discipline", "scale", ["DSC2010", "DSC1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060", "HLP1010"]]];
 function showShell() {
   const screens = {};
   for (const [code, [key, icon, perm, create]] of Object.entries(SCREENS)) {

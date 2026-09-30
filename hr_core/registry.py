@@ -22,7 +22,7 @@ import threading
 import uuid
 from datetime import datetime, timezone  # noqa: F401
 
-from . import discipline, scheduling, skills
+from . import discipline, people_ops, scheduling, skills
 from .canonical import canonical
 from .journal import SharedConnection, open_journal
 from .scheduling import ScheduleError
@@ -51,10 +51,25 @@ ENTITIES = {
     "penalty_rule": ["code", "name", "violation", "threshold_minutes", "window_days", "steps", "active"],
     "violation": ["code", "employee_id", "rule_id", "work_date", "minutes", "occurrence", "proposed", "status", "decision", "decided_by",
                   "decided_on", "note", "source"],
+    # WP-H2 to WP-H5 (hr_core/people_ops.py): recruitment and onboarding, overtime, training, leave
+    "headcount_plan": ["code", "org_unit_id", "work_center_code", "job_id", "period", "planned_fte", "source", "note"],
+    "agency": ["code", "name", "contact", "fee_percent", "active"],
+    "hire_requisition": ["code", "job_id", "position_id", "work_center_code", "count", "filled", "employment_type", "reason", "needed_by", "contract_months", "agency_id",
+                         "status", "approved_by", "note"],
+    "candidate": ["code", "requisition_id", "display_name", "source", "stage", "stage_date", "note"],
+    "onboarding_task": ["code", "employee_id", "kind", "due", "done_on"],
+    "contract": ["code", "employee_id", "employment_type", "start_date", "end_date", "agency_id", "requisition_id", "reason"],
+    "overtime_request": ["code", "employee_id", "work_date", "planned_minutes", "kind", "reason", "requested_by", "status", "approved_by", "decided_on"],
+    "course": ["code", "name", "skill_id", "grants_level", "validity_months", "duration_hours", "mandatory_for", "onboarding_kind"],
+    "training_session": ["code", "course_id", "session_date", "trainer", "attendees", "status"],
+    "leave_type": ["code", "name", "paid", "annual_days", "carry_over_days", "active"],
+    "leave_request": ["code", "employee_id", "leave_type_id", "from_date", "to_date", "days", "status", "approver", "decided_on", "note"],
 }
 # Entities added after phase 2: left out of the fingerprint while empty, so backups made before they existed still
 # rehearse to the same fingerprint (an older program's manifest does not know them).
-LATER_ENTITIES = ("shift", "work_calendar", "shift_assignment", "roster_override", "skill", "employee_skill", "penalty_rule", "violation")
+LATER_ENTITIES = ("shift", "work_calendar", "shift_assignment", "roster_override", "skill", "employee_skill", "penalty_rule", "violation",
+                  "headcount_plan", "agency", "hire_requisition", "candidate", "onboarding_task", "contract", "overtime_request", "course", "training_session", "leave_type", "leave_request")
+people_ops_ENTITIES = ("headcount_plan", "agency", "hire_requisition", "candidate", "onboarding_task", "contract", "overtime_request", "course", "training_session", "leave_type", "leave_request")
 META_COLUMNS = ["id", "ver", "deleted", "deleted_at", "deleted_by", "created_at", "created_by", "updated_at", "updated_by"]
 
 
@@ -86,6 +101,7 @@ class Registry:
     def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company", journal=None):
         uuid.UUID(company_id)
         self.today = _today  # replaced by tests to put "today" where a rule needs it
+        self.overtime_policy = {}  # the company's overtime settings (set by the service; defaults in people_ops)
         self.company_id = company_id
         os.makedirs(data_dir, exist_ok=True)
         self.path = os.path.join(data_dir, "hr.db")
@@ -315,6 +331,10 @@ class Registry:
             self._live("employee", row.get("employee_id"), "the employee")
             self._live("shift", row.get("shift_id"), "the shift")
             self._live("work_calendar", row.get("calendar_id"), "the working calendar")
+            if cur is None:   # a new hire is not put on a production line before the medical check, the protective equipment and the ESD training are done
+                todo = [r[0] for r in self.db.execute("SELECT kind FROM onboarding_task WHERE employee_id = ? AND deleted = 0 AND (done_on IS NULL OR done_on = '') AND kind IN ('medical', 'ppe', 'esd_training') ORDER BY kind", (row["employee_id"],))]
+                if todo:
+                    raise RegistryError("hr.onboarding.incomplete", f"the employee cannot be scheduled on a line yet: {', '.join(todo)} not done")
             others = [dict(r) for r in self.db.execute("SELECT * FROM shift_assignment WHERE employee_id = ? AND deleted = 0 AND id != ?",
                                                         (row["employee_id"], cur["id"] if cur else ""))]
             scheduling.check_assignment(row, cur, others, today)
@@ -329,6 +349,8 @@ class Registry:
             emp = self._live("employee", row.get("employee_id"), "the employee")
             skill = self._live("skill", row.get("skill_id"), "the skill")
             skills.check_employee_skill(row, emp["code"], skill["code"])
+        elif entity in people_ops_ENTITIES:
+            people_ops.validate(self, entity, row, cur)
         elif entity == "penalty_rule":
             discipline.check_rule(row)
         elif entity == "violation":
@@ -349,7 +371,11 @@ class Registry:
             "shift": [("shift_assignment", "shift_id", "assignments of this shift"), ("roster_override", "shift_id", "day changes to this shift")],
             "work_calendar": [("shift_assignment", "calendar_id", "assignments using this calendar")],
             "shift_assignment": [], "roster_override": [],
-            "skill": [("employee_skill", "skill_id", "people qualified for it")],
+            "headcount_plan": [], "agency": [("hire_requisition", "agency_id", "requisitions for it"), ("contract", "agency_id", "contracts through it")],
+            "hire_requisition": [("candidate", "requisition_id", "candidates for it")], "candidate": [], "onboarding_task": [], "contract": [],
+            "overtime_request": [], "course": [("training_session", "course_id", "sessions of it")], "training_session": [],
+            "leave_type": [("leave_request", "leave_type_id", "leave requests of this type")], "leave_request": [],
+            "skill": [("employee_skill", "skill_id", "people qualified for it"), ("course", "skill_id", "courses that grant it")],
             "employee_skill": [],
             "penalty_rule": [("violation", "rule_id", "violations decided under it")], "violation": [],
         }[entity]

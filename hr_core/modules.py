@@ -7,11 +7,12 @@ never part of a sellable edition until built (payroll).
 MODULES = {
     "kernel": {"depends_on": [], "status": "built", "what": "company, organisation, jobs, positions, employee registry, journal, audit, eco publisher"},
     "attendance": {"depends_on": ["kernel"], "status": "built", "what": "the migrated attendance application (locked engine), daily import, dashboard, history"},
-    "leave": {"depends_on": ["attendance"], "status": "built", "what": "leave requests linked to attendance days (inside the migrated engine)"},
+    "leave": {"depends_on": ["attendance"], "status": "built", "what": "leave requests linked to attendance days (inside the migrated engine); leave types, balances and approvals in the registry"},
+    "recruitment": {"depends_on": ["shifts"], "status": "built", "what": "headcount plan, requisitions approved by someone else, candidates, hiring with contract and onboarding, contract end"},
     "shifts": {"depends_on": ["kernel"], "status": "built", "what": "shifts, working calendars, effective-dated assignments, day changes and swaps, the planned schedule compared with attendance"},
-    "overtime": {"depends_on": ["shifts", "attendance"], "status": "planned", "what": "overtime requests, approval and actuals"},
+    "overtime": {"depends_on": ["shifts", "attendance"], "status": "built", "what": "overtime requests, approval by someone else, caps, actuals against approvals, the figures payroll will need"},
     "skills": {"depends_on": ["kernel"], "status": "built", "what": "skills catalogue, qualifications with levels and expiry, published for manufacturing's station check"},
-    "training": {"depends_on": ["skills"], "status": "planned", "what": "courses and completions that grant skills"},
+    "training": {"depends_on": ["skills"], "status": "built", "what": "courses and sessions whose passes grant or renew qualifications"},
     "discipline": {"depends_on": ["shifts", "attendance"], "status": "built", "what": "the company's penalty schedule, violations proposed from attendance, decisions by the right person (days, never money)"},
     "payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only", "what": "pay calculation; accounting entries go to Mizan"},
 }
@@ -19,7 +20,7 @@ MODULES = {
 EDITIONS = {
     "attendance": ["kernel", "attendance"],
     "attendance_leave": ["kernel", "attendance", "leave"],
-    "full": ["kernel", "attendance", "leave", "shifts", "overtime", "skills", "training"],
+    "full": ["kernel", "attendance", "leave", "shifts", "recruitment", "overtime", "skills", "training"],
 }
 
 

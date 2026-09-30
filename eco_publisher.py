@@ -113,9 +113,9 @@ def registry_plan_and_skills(registry, company, today=None):
             d = plan.day(emp_id, (first + timedelta(days=n)).isoformat())
             key = f"{emp['code']}:{d['work_date']}"
             body = {"id": hr_id(company, "schedule", key), "employee": {"id": hr_id(company, "employee", emp["code"]), "code": emp["code"]},
-                    "work_date": d["work_date"], "status": d["status"], "paid_minutes": d["paid_minutes"], "origin": {"app": "hr", "type": "schedule", "key": key}}
+                    "work_date": d["work_date"], "status": "rest" if d["status"] == "leave" else d["status"], "paid_minutes": d["paid_minutes"], "origin": {"app": "hr", "type": "schedule", "key": key}}
             for k in ("shift_code", "start", "end", "source"):
-                if d.get(k):
+                if d.get(k) and not (k == "source" and d["status"] == "leave"):     # on leave the person is simply not expected: a rest day for the others
                     body[k] = d[k]
             out[("eco.schedule_day.v1", body["id"])] = body
     skills = {k["id"]: k for k in registry.list("skill", include_deleted=True)}

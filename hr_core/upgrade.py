@@ -79,9 +79,25 @@ def _m3_discipline_rights(svc):
                             [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
 
 
+def _m4_people_ops_rights(svc):
+    """Data version 4: the tables of recruitment, overtime, training and leave exist (the registry creates empty ones on open); the built-in
+    profiles gain their rights. Approving stays apart from asking for the HR officer (separation of duties). A customised profile keeps what
+    it had and only gains."""
+    from .auth import ADDED_IN_DATA_VERSION_4
+    for code, added in sorted(ADDED_IN_DATA_VERSION_4.items()):
+        cur = svc.auth._get("profile", code)
+        if not cur or cur["deleted"]:
+            continue
+        want = sorted(set(cur["perms"] or []) | set(added))
+        if want != sorted(cur["perms"] or []):
+            svc.auth.commit("upgrade", f"Data version 4: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
+                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+
+
 MIGRATIONS = [(1, "built-in profiles gain the attendance and settings rights", _m1_attendance_rights),
               (2, "shifts and skills: built-in profiles gain their rights", _m2_shift_and_skill_rights),
-              (3, "discipline: built-in profiles gain the rights of the penalty schedule", _m3_discipline_rights)]
+              (3, "discipline: built-in profiles gain the rights of the penalty schedule", _m3_discipline_rights),
+              (4, "recruitment, overtime, training and leave: built-in profiles gain their rights", _m4_people_ops_rights)]
 assert [n for n, _, _ in MIGRATIONS] == list(range(1, DATA_VERSION + 1)), "one migration per data version"
 
 

@@ -100,3 +100,6 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L46** When the server acts after it has answered (the attendance audit line), a test waits for the effect.
 - **L47** After an interrupted `migration/mutations.py` run, `git diff` before committing: a planted bug left in a file
   looks like an ordinary change (one was committed in `0ba58a3`).
+- **L48** A four-eyes rule (the author never approves) is tested with a person who holds the approve right and is the author; a plain viewer is refused by the right first and proves nothing (six planted bugs survived until then, `HISTORY.md` 2026-09-30).
+- **L49** A planted bug that survives is either a missing test or a change that alters nothing; find out which before adding a check.
+- **L50** Guards that read code with a regular expression stop guarding when the code style changes; read it with `ast` (the route inventory missed raw strings and `ENTITY_ROUTE`).

@@ -5,8 +5,7 @@ organisation (company → site → business unit → department → section, job
 migrated attendance application with roster and leave linking (locked engine), and (phase 2) users, profiles and
 server-side permissions, device identity, a signed append-only journal and audit, verified automatic backups with a
 restore rehearsal (`docs/HR_SECURITY.md`), and (phase 2.5) one installable product: a Windows installer, one server and
-one sign-in, screens in English and Arabic, safe data-version updates (`docs/HR_DELIVERY.md`). **Planned, not built:** independent
-shifts/rosters/assignments, overtime, skills/training/station qualification. **Design only:** payroll calculation
+one sign-in, screens in English and Arabic, safe data-version updates (`docs/HR_DELIVERY.md`). **Built since (2026-09-30):** what manufacturing tells HR (crew requirements, labour facts, the staffing gap), recruitment and onboarding, overtime requests and figures, training that qualifies, leave requests and balances. **Design only:** payroll calculation
 (Mizan books the entries; it never stores employees or computes pay). Other applications (GMES, Mizan, Space Planner)
 keep read-only mirrors and reference employees by the shared id `UUIDv5(company, "hr:employee:<Employee_ID>")`.
 BAMS (`Mr.Ayman-HR`) is a different product; it is the ecosystem's infrastructure REFERENCE, never modified from here.
@@ -75,6 +74,8 @@ python TEST_HR_SECURITY.py         phase-2 exit gate (HR_REQUIRE_CROSSCHECK=1 wi
 python TEST_HR_DELIVERY.py          phase 2.5: one product, updates, failures, power cut, recovery installer, languages
 python TEST_HR_WORKFORCE.py         phases 3 and 5: shifts, schedule, attendance comparison, skills, what GMES receives
 python TEST_HR_DISCIPLINE.py        phase 6: penalty schedule, proposals from attendance, separate right to decide, the law's limits
+python TEST_HR_ECO_INBOX.py         what manufacturing tells HR: machine keys, crew requirements, labour facts, the staffing gap
+python TEST_HR_PEOPLE_OPS.py         recruitment and onboarding, overtime, training that qualifies, leave
 python TEST_DOCS_CURRENT.py         the continuity documents match the code
 python migration/mutations.py      every planted bug must be caught
 python BUILD_PROJECT.py

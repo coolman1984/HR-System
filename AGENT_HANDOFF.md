@@ -12,7 +12,7 @@ You have no chat history. These files are the memory. Ten minutes, in this order
 ```handoff
 phase: 2.5
 stage: 2.5 one installable product + 2.6 product shell
-updated: 2026-09-28
+updated: 2026-09-30
 ```
 
 ## Where we are
@@ -49,6 +49,19 @@ by `close()`, restarted on a change, reading the registry through its own read-o
 (`docs/HR_DELIVERY.md` ADR-HR-008). Routes: `GET|PUT /api/admin/integration`, `POST /api/admin/integration/run`.
 `python eco_publisher.py` with `ECO_*` keeps working unchanged.
 
+**People operations and what manufacturing tells HR (2026-09-30, ecosystem plan WP-H1 to WP-H5):** GMES sends HR its crew
+requirements and labour facts to `POST /eco/v1/inbox` with a machine key (`hr_core/eco_inbox.py`; keys are made on the
+API, shown once, hash kept). HR compares the need with who is scheduled and qualified (`STF2010`, `GET /api/staffing/gap`).
+Eleven new registers and their rules live in `hr_core/people_ops.py` (pure rules) and `hr_core/people_service.py` (commands:
+`hire`, `complete_training`, `propose_headcount`, `expire_contracts`, leave balance, overtime figures and policy):
+recruitment and onboarding, overtime, training that qualifies people, leave. Four-eyes rule everywhere: whoever raises a
+requisition, overtime request or leave request does not approve it (the right is checked first, then the "own request"
+rule). Data version 4 gives the built-in profiles their new rights. The overtime policy figures are settings whose source
+note says *verify against Labour Law 14/2025 and the contracts*. Payroll (WP-H6) is **not** built: its gate in
+`docs/HR_PAYROLL_DESIGN.md` §2 is the owner's decision. Screens: `REC1010`-`REC1060`, `OVT1010`, `OVT1020`, `TRN1010`,
+`TRN2010`, `LEV1010`, `LEV2010`, `LEV3010`, `STF2010`; seen in Chrome on a synthetic company (English; Arabic is proven
+only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, `TEST_HR_PEOPLE_OPS.py`; 19 planted bugs.
+
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
   on 2026-09-27 when the ecosystem needed one owner for people (`MIGRATION.md`).
@@ -82,7 +95,8 @@ by `close()`, restarted on a change, reading the registry through its own read-o
    GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
    Never edit `hr_core/web/eco-ui/` in this repository.
 0b. Shifts (phase 3) and skills (phase 5) were built on the owner's order (2026-09-28); still owed for their gates:
-   Excel import of shifts/rosters, planned overtime, leave on the plan, training, a GMES screen for station requirements.
+   Excel import of shifts/rosters and a GMES screen for station requirements (planned overtime, leave on the plan and
+   training were built on 2026-09-30, see above). Look at the new people-operations screens in Arabic and dark mode.
    **Payroll is design only** (`docs/HR_PAYROLL_DESIGN.md`): do not build it before its gate (§2 there).
 1. Close phase 2.5: the CI job `windows-installer` is green (31/31 on b3d106d); still owed: the owner's clean-PC run in
    Windows Sandbox; mark phase 2.5 done in `docs/HR_SYSTEM_DESIGN.md` §7 and move the `phase` line here and in
