@@ -27,7 +27,7 @@ clean-PC run (Windows Sandbox, `docs/HR_DELIVERY.md` §5).
 **Phase 2.6 (UX, 2026-09-28):** the owner stopped all business features until the products look commercial. The screens
 are now one application shell built from the ecosystem's interface kit (`hr_core/web/eco-ui/`, the unchanged copy of
 GMES `packages/eco-ui/src`, pinned by SHA-256 in `hr_core/eco_ui_pin.json`). Waiting for: the owner's approval of the
-look, after comparing with his redacted G-MES screenshots (`docs/ux/visual-acceptance.md`).
+look, after comparing with his redacted reference screenshots (`docs/ux/visual-acceptance.md`).
 
 **Mizan's look and ideas (2026-09-28, owner's order):** the kit (GMES `4d27f55`, ADR-033 there) now has an opt-in
 *modern* look taken from Mizan, and HR uses it by default; the grid filters every column, groups and has presets. HR added
@@ -91,7 +91,7 @@ only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, 
    guided tours. Arabic and dark mode of the new screens (journey, violations, help panel) were not yet looked at in a
    browser: do that, and retake `docs/ux/` screenshots. Fix the look in GMES
    `packages/eco-ui/src` (kit) or `hr_core/web/hr.css` (HR's own parts), never in `hr_core/web/eco-ui/`.
-0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his G-MES screenshot comparison to the TOKENS in
+0. Phase 2.6 (UX): wait for the owner's approval of the shell; apply his reference screenshot comparison to the TOKENS in
    GMES `packages/eco-ui/src/tokens.css` (never here), copy the kit back with a new pin, retake `docs/ux/` screenshots.
    Never edit `hr_core/web/eco-ui/` in this repository.
 0b. Shifts (phase 3) and skills (phase 5) were built on the owner's order (2026-09-28); still owed for their gates:

@@ -8,6 +8,14 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-09-30 - Documents named another company's system
+- **Symptom:** the UX documents compared the screens with a named vendor's system and quoted its screen codes; the
+  repository is public and the owner presents the ecosystem to other factories.
+- **Cause:** the visual checklist was copied from the manufacturing design while that comparison was still planned.
+- **Fix:** neutral wording ("reference screenshots", "enterprise-MES philosophy"); no vendor name, screen code or
+  logo left (`docs/ux/visual-acceptance.md`, `STATUS.md`, `AGENT_HANDOFF.md`, `docs/HR_SYSTEM_DESIGN.md`). No behaviour change.
+- **Lesson:** a public design document names ideas, never another company's product.
+
 ## 2026-09-30 - Signed machine calls, and the publisher follows the simulated day
 - **Symptom:** a copied or altered call to the inbox was as good as the original; and in a simulated run the schedule HR published started at the computer's real date, so manufacturing had no schedule for the simulated days and produced no labour facts.
 - **Cause:** machine calls carried only the key; `registry_plan_and_skills` read `date.today()`.
