@@ -1,6 +1,21 @@
-# Payroll — detailed design (DESIGN ONLY: nothing here is built)
+# Payroll — detailed design (first version BUILT on 2026-10-02, see the box below)
 
-Status: **Design only** (owner's decision 2026-09-28: shifts and skills now, payroll designed now and built only after
+> **Built 2026-10-02 (owner's order: sample data, the trial runs on this laptop, "change the rules").** The gate in §2 was lifted for
+> the trial; what was built is a deliberately smaller first version of this design, in `hr_core/payroll_calc.py` and
+> `hr_core/payroll.py`, tested by `TEST_HR_PAYROLL.py`:
+> * **Data:** not four registry entities but one separate database `data/payroll.db` (profiles with effective dates, monthly
+>   adjustments, runs, one result per employee, an outbox), a backup attachment; the registry stays free of money.
+> * **Rights:** `hr.payroll.read|write|run|approve` instead of `payroll.read|run|approve|admin`.
+> * **Calculation:** basic and allowances prorated by days in post, unpaid leave and adjustments, overtime from approved requests
+>   at basic / 240 with the company's premiums, night allowance from the shift plan, insurance, salary tax, martyrs' fund.
+>   Attendance reaches pay only as adjustments, because the locked engine takes spreadsheets (§2.1 is still open).
+> * **Screens:** `PAY2010` runs, `PAY1010` salary profiles, `PAY1020` adjustments (payslip printing is not built).
+> * **Still owed before real salaries:** the five points of §2 (above all 5: a trial month calculated by hand by the owner's
+>   accountant), the rules and rates confirmed by a payroll accountant, an attendance source other than a spreadsheet.
+>
+> The rest of this document is the original design, kept as the plan for what is owed.
+
+Status of the original plan: **Design only** (owner's decision 2026-09-28: shifts and skills now, payroll designed now and built only after
 attendance, leave and overtime are bound to the registry employee and stable — `CLAUDE.md` "Never", design §6-7).
 This document turns `docs/HR_SYSTEM_DESIGN.md` §6 into a buildable plan, so the build can start the day the gate opens.
 

@@ -14,13 +14,13 @@ MODULES = {
     "skills": {"depends_on": ["kernel"], "status": "built", "what": "skills catalogue, qualifications with levels and expiry, published for manufacturing's station check"},
     "training": {"depends_on": ["skills"], "status": "built", "what": "courses and sessions whose passes grant or renew qualifications"},
     "discipline": {"depends_on": ["shifts", "attendance"], "status": "built", "what": "the company's penalty schedule, violations proposed from attendance, decisions by the right person (days, never money)"},
-    "payroll": {"depends_on": ["attendance", "leave", "overtime"], "status": "design_only", "what": "pay calculation; accounting entries go to Mizan"},
+    "payroll": {"depends_on": ["attendance", "leave", "overtime", "shifts"], "status": "built", "what": "salary profiles, monthly pay runs (earnings, overtime, insurance, salary tax, net) approved by a second person, totals sent to Mizan"},
 }
 
 EDITIONS = {
     "attendance": ["kernel", "attendance"],
     "attendance_leave": ["kernel", "attendance", "leave"],
-    "full": ["kernel", "attendance", "leave", "shifts", "recruitment", "overtime", "skills", "training"],
+    "full": ["kernel", "attendance", "leave", "shifts", "recruitment", "overtime", "skills", "training", "payroll"],
 }
 
 

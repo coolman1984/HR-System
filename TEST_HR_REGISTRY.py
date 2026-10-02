@@ -189,21 +189,23 @@ results["publisher_uses_registry_with_org_codes"] = True
 # 10. Editions (mechano): what can be sold is resolved, payroll is design-only.
 assert modules.available("attendance") == ["kernel", "attendance"]
 assert modules.available("attendance_leave") == ["kernel", "attendance", "leave"]
-assert "payroll" not in modules.resolve("full")
+assert "payroll" in modules.resolve("full")                      # built on 2026-10-02 (owner's decision: trial on this laptop)
 try:
+    modules.MODULES["payroll"]["status"] = "design_only"          # the rule itself still holds for any module that is only designed
     modules.EDITIONS["bad"] = ["payroll"]
     modules.resolve("bad")
-    raise AssertionError("payroll must not be sellable")
+    raise AssertionError("a design-only module must not be sellable")
 except ValueError:
     pass
 finally:
+    modules.MODULES["payroll"]["status"] = "built"
     modules.EDITIONS.pop("bad", None)
-results["editions_resolve_and_payroll_is_design_only"] = True
+results["editions_resolve_and_a_design_only_module_is_not_sellable"] = True
 
 # 11. The kernel package is standard library only (CHECK_ENVIRONMENT.py only scans top-level files).
 import sys  # noqa: E402
 std = set(sys.stdlib_module_names) | {"hr_core", "calculation_engine", "engine", "openpyxl"}  # engine: the locked attendance application (phase 2.5 serves it)
-std |= {"eco_publisher", "eco_contract"}  # HR's own top-level publisher (standard library only, CHECK_ENVIRONMENT scans it); hr_core/eco_link.py runs it
+std |= {"eco_publisher", "eco_contract", "eco_signing"}  # HR's own top-level publisher (standard library only, CHECK_ENVIRONMENT scans it); hr_core/eco_link.py runs it
 for path in (ROOT / "hr_core").rglob("*.py"):
     # The ONE exception: signing.py prefers the standard `cryptography` package when present (optional, guarded).
     allowed = std | ({"cryptography"} if path.name == "signing.py" else set())

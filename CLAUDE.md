@@ -5,8 +5,8 @@ organisation (company → site → business unit → department → section, job
 migrated attendance application with roster and leave linking (locked engine), and (phase 2) users, profiles and
 server-side permissions, device identity, a signed append-only journal and audit, verified automatic backups with a
 restore rehearsal (`docs/HR_SECURITY.md`), and (phase 2.5) one installable product: a Windows installer, one server and
-one sign-in, screens in English and Arabic, safe data-version updates (`docs/HR_DELIVERY.md`). **Built since (2026-09-30):** what manufacturing tells HR (crew requirements, labour facts, the staffing gap), recruitment and onboarding, overtime requests and figures, training that qualifies, leave requests and balances. **Design only:** payroll calculation
-(Mizan books the entries; it never stores employees or computes pay). Other applications (GMES, Mizan, Space Planner)
+one sign-in, screens in English and Arabic, safe data-version updates (`docs/HR_DELIVERY.md`). **Built since (2026-09-30):** what manufacturing tells HR (crew requirements, labour facts, the staffing gap), recruitment and onboarding, overtime requests and figures, training that qualifies, leave requests and balances. **Built on 2026-10-02:** payroll (HR calculates pay from salary profiles, overtime, leave and adjustments; Mizan books the totals;
+Mizan never stores employees or computes pay). Other applications (GMES, Mizan, Space Planner)
 keep read-only mirrors and reference employees by the shared id `UUIDv5(company, "hr:employee:<Employee_ID>")`.
 BAMS (`Mr.Ayman-HR`) is a different product; it is the ecosystem's infrastructure REFERENCE, never modified from here.
 Design and plan: `docs/HR_SYSTEM_DESIGN.md`.
@@ -41,13 +41,10 @@ design only, checked against the code), the top of `HISTORY.md` and `docs/LESSON
 - Publish personal data (birth date, national id, gender, pay, contacts) to another application.
 - Write into another application's database, or accept employee records from another application.
 - Let payroll have two truths: HR calculates pay; Mizan books the entries; neither does the other's job.
-- Build payroll before employees, attendance, leave and overtime are stable (docs/HR_SYSTEM_DESIGN.md §6-7).
 - Touch `engine.py` / `calculation_engine.py` / `dashboard.html` / `PROJECT.json` for new modules: new work goes in `hr_core/` beside them.
 - Edit `eco_schemas/`: they are generated in `coolman1984/GMES/packages/eco-contracts` and copied here unchanged.
 - Edit `hr_core/web/eco-ui/` (the ecosystem's interface kit): it is changed in `coolman1984/GMES/packages/eco-ui/src`, then
   copied here unchanged with a new `hr_core/eco_ui_pin.json`. Screens are built from the kit, not styled one by one.
-- Build payroll before its gate in `docs/HR_PAYROLL_DESIGN.md` §2 is green (owner's decision 2026-09-28: shifts and skills
-  built, payroll designed only).
 - Re-plan a day before today, change a started assignment other than ending it, or change the times of a shift / the rest
   days of a calendar that people already worked (`hr_core/scheduling.py`): the past schedule is history.
 - Edit `hr_core/vendor/` (BAMS's signing code, byte-for-byte, hash-pinned) or keep a second, modified copy of any
@@ -57,6 +54,9 @@ design only, checked against the code), the top of `HISTORY.md` and `docs/LESSON
 - Rewrite, UPDATE or DELETE a journal or audit line; copy a backup over live data (restore = a new compensating line);
   put `data/node/device.key`, a password, a session token or a key in a backup, a log line or the audit.
 - Build shifts, skills or payroll before `TEST_HR_SECURITY.py` (phase 2 exit gate) passes.
+- Let one person calculate and approve the same pay run, change an approved run, or send a person's pay (or name) to another application:
+  only totals per cost centre and account key leave HR. Real salaries are entered only after a payroll accountant has confirmed the rules
+  (`docs/HR_PAYROLL_DESIGN.md` §2); until then salary data is synthetic (owner's decision 2026-10-02).
 
 ## Tests (all must pass; CI runs them on Linux and Windows)
 ```
@@ -75,6 +75,7 @@ python TEST_HR_DELIVERY.py          phase 2.5: one product, updates, failures, p
 python TEST_HR_WORKFORCE.py         phases 3 and 5: shifts, schedule, attendance comparison, skills, what GMES receives
 python TEST_HR_DISCIPLINE.py        phase 6: penalty schedule, proposals from attendance, separate right to decide, the law's limits
 python TEST_HR_ECO_INBOX.py         what manufacturing tells HR: machine keys, crew requirements, labour facts, the staffing gap
+python TEST_HR_PAYROLL.py            payroll: hand-computed pay, four-eyes approval, what Mizan receives
 python TEST_HR_PEOPLE_OPS.py         recruitment and onboarding, overtime, training that qualifies, leave
 python TEST_HR_SIMULATION.py         the simulated date: movable only with HR_SIMULATION=1, every rule follows it
 python TEST_DOCS_CURRENT.py         the continuity documents match the code

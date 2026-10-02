@@ -1288,7 +1288,7 @@ function advisorScreen({ shell }) {
 const PERM_GROUPS = [["perm_group.people",["hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run"]],
   ["perm_group.organisation", ["hr.org.read", "hr.org.write"]], ["perm_group.attendance", ["hr.attendance.read", "hr.attendance.upload"]],
   ["perm_group.planning", ["hr.shifts.read", "hr.shifts.write"]], ["perm_group.recruitment", ["hr.recruitment.read", "hr.recruitment.write", "hr.recruitment.approve"]],
-  ["perm_group.overtime", ["hr.overtime.read", "hr.overtime.write", "hr.overtime.approve"]], ["perm_group.training", ["hr.training.read", "hr.training.write"]],
+  ["perm_group.overtime", ["hr.overtime.read", "hr.overtime.write", "hr.overtime.approve"]], ["perm_group.payroll", ["hr.payroll.read", "hr.payroll.write", "hr.payroll.run", "hr.payroll.approve"]], ["perm_group.training", ["hr.training.read", "hr.training.write"]],
   ["perm_group.leave", ["hr.leave.read", "hr.leave.write", "hr.leave.approve"]], ["perm_group.skills", ["hr.skills.read", "hr.skills.write"]], ["perm_group.discipline", ["hr.discipline.read", "hr.discipline.write", "hr.discipline.approve"]],
     ["perm_group.administration", ["admin.users.manage", "admin.audit.read", "admin.system.read", "admin.settings.manage"]], ["perm_group.backups", ["admin.backup.manage", "admin.backup.restore"]]];
 function profilesScreen({ shell }) {
@@ -1530,8 +1530,10 @@ function settingsScreen({ shell }) {
           ui.field(ui.kitText("language"), ui.segmented({ value: S.lang, options: [["en", "English"], ["ar", "العربية"]], onChange: setLanguage }))) }),
         ui.card({ title: t("settings.company"), subtitle: t("settings.company_sub"), icon: "building", body: h("div", { class: "hr-stack" }, ui.props([[t("setup.company_name"), c.name], [t("field.code"), c.code ? ui.ltr(c.code) : null],
           [t("setup.source"), c.source ? t("company.source." + c.source) : null]]), c.provisional ? ui.banner("warn", t("company.provisional_help")) : null) }),
-        ui.card({ title: t("eco.title"), subtitle: t("eco.sub"), icon: "link", body: eco }));
+        ui.card({ title: t("eco.title"), subtitle: t("eco.sub"), icon: "link", body: eco }),
+        ...(can("admin.settings.manage") ? [ui.card({ title: t("paytarget.title"), subtitle: t("paytarget.sub"), icon: "link", body: payBox })] : []));
       loadEco();
+      loadPayTarget();
     } catch (e) { ui.clear(body, ui.banner("bad", e.message)); }
   }
   async function store() {
@@ -1577,6 +1579,20 @@ function settingsScreen({ shell }) {
     if (ecoClear && ecoClear.querySelector("input").checked) fields.clear_key = true;
     try { await api("PUT", "/api/admin/integration", fields); ecoKey.value = ""; ui.toast({ kind: "ok", title: t("saved") }); loadEco(); }
     catch (e) { fail(e); }
+  }
+  // Payroll to accounting: where an approved pay run sends its totals. The key is write-only, like the GMES key.
+  const payBox = h("div", { class: "hr-stack" });
+  async function loadPayTarget() {
+    if (!can("admin.settings.manage")) return;
+    let x;
+    try { x = await api("GET", "/api/payroll/target"); } catch (e) { ui.clear(payBox, ui.banner("bad", e.message)); return; }
+    const url = ui.input({ value: x.url || "", placeholder: "http://127.0.0.1:4100", dir: "ltr" });
+    const key = ui.input({ type: "password", value: "", dir: "ltr", autocomplete: "new-password", placeholder: x.key_set ? t("paytarget.key_keep") : t("eco.key_enter") });
+    ui.clear(payBox, ui.banner("info", t("paytarget.help")),
+      h("div", { class: "hr-row" }, x.key_set ? ui.badge(t("paytarget.key_set"), "ok", "key") : ui.badge(t("paytarget.key_not_set"), "warn", "key")),
+      ui.field(t("paytarget.url"), url, { hint: t("paytarget.url_hint") }), ui.field(t("paytarget.key"), key, { hint: t("paytarget.key_hint") }),
+      h("div", { class: "hr-row" }, ui.button({ label: t("paytarget.save"), icon: "save", kind: "primary", onClick: async () => {
+        try { await api("PUT", "/api/payroll/target", { url: url.value.trim(), ...(key.value ? { key: key.value } : {}) }); ui.toast({ kind: "ok", title: t("saved") }); loadPayTarget(); } catch (e) { fail(e); } } })));
   }
   async function sendEco() {
     ui.toast({ kind: "info", text: t("working") });
@@ -1875,6 +1891,147 @@ function overtimeFiguresScreen({ shell }) {
   return { el: sc.el };
 }
 
+// ------------------------------------------------------------------ Payroll (WP-H6): salary profiles, the month's adjustments, pay runs
+const pounds = (minor) => minor / 100;
+const toMinor = (text) => Math.round(Number(String(text).replace(/,/g, "")) * 100);
+const PAY_STATE = { calculated: "warn", approved: "ok", reversed: "neutral" };
+function payProfilesScreen({ shell }) {
+  const g = ui.grid([
+    { key: "employee_code", label: t("field.employee_id"), type: "code", width: 110, frozen: true, total: "count" },
+    { key: "effective_from", label: t("pay.effective_from"), type: "date", width: 120 },
+    { key: "basic", label: t("pay.basic"), type: "number", digits: 2, width: 120, total: "sum", value: (r) => pounds(r.basic_minor) },
+    { key: "allowance", label: t("pay.allowance"), type: "number", digits: 2, width: 120, total: "sum", value: (r) => pounds(r.allowance_minor) },
+    { key: "insurable", label: t("pay.insurable"), type: "number", digits: 2, width: 130, total: "sum", value: (r) => pounds(r.insurable_minor) },
+    { key: "cost_center", label: t("pay.cost_center"), type: "code", width: 120 }, { key: "note", label: t("field.note"), width: 240 },
+    { key: "created_by", label: t("pay.by"), type: "code", width: 110 },
+  ], { rowKey: "key", selection: "single", totals: true, layoutKey: "PAY1010", emptyText: t("empty"), onSelect: () => { edit.disabled = !can("hr.payroll.write"); }, onOpen: (r) => can("hr.payroll.write") && dialog(r) });
+  const edit = ui.button({ label: t("edit"), icon: "edit", disabled: true, onClick: () => dialog(g.selected()[0]) });
+  const add = ui.button({ label: t("pay.new_profile"), icon: "plus", kind: "primary", disabled: !can("hr.payroll.write"), onClick: () => dialog(null) });
+  const sc = screen({ code: "PAY1010", title: t("nav.pay_profiles"), path: [t("g.payroll")], shell, toolbar: [add, edit],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("pay-profiles"), exportLabel: t("export"), columns: () => g.columnsDialog() }, grid: g });
+  async function load() {
+    g.setLoading();
+    try { g.setRows((await api("GET", "/api/payroll/profiles")).map((r) => ({ ...r, key: r.employee_code + "@" + r.effective_from }))); sc.result({}); } catch (e) { g.setError(e.message); }
+  }
+  function dialog(cur) {
+    const f = {
+      employee: ui.input({ value: cur ? cur.employee_code : "", dir: "ltr" }), from: ui.input({ type: "date", value: cur ? cur.effective_from : localToday() }),
+      basic: ui.input({ value: cur ? String(pounds(cur.basic_minor)) : "", dir: "ltr" }), allowance: ui.input({ value: cur ? String(pounds(cur.allowance_minor)) : "0", dir: "ltr" }),
+      insurable: ui.input({ value: cur ? String(pounds(cur.insurable_minor)) : "", dir: "ltr" }), cc: ui.input({ value: cur ? cur.cost_center || "" : "", dir: "ltr" }), note: ui.input({ value: cur ? cur.note || "" : "" }),
+    };
+    const out = h("div");
+    ui.dialog({ title: t("pay.new_profile"), icon: "id-card", width: 560, body: h("div", { class: "hr-stack" }, ui.banner("info", t("pay.profile_help")), h("div", { class: "eco-form" },
+      ui.field(t("field.employee_id"), f.employee, { required: true }), ui.field(t("pay.effective_from"), f.from, { required: true }), ui.field(t("pay.basic"), f.basic, { required: true }),
+      ui.field(t("pay.allowance"), f.allowance), ui.field(t("pay.insurable"), f.insurable, { hint: t("pay.insurable_hint") }), ui.field(t("pay.cost_center"), f.cc, { hint: t("pay.cost_center_hint") }), ui.field(t("field.note"), f.note)), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
+        try {
+          const fields = { effective_from: f.from.value, basic_minor: toMinor(f.basic.value), allowance_minor: toMinor(f.allowance.value || "0"), insurable_minor: toMinor(f.insurable.value || f.basic.value), cost_center: f.cc.value, note: f.note.value };
+          await api("PUT", "/api/payroll/profiles/" + encodeURIComponent(f.employee.value.trim()), { fields }); ui.toast({ kind: "ok", title: t("saved") }); load(); return true;
+        } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  load();
+  return { el: sc.el };
+}
+function payAdjustmentsScreen({ shell }) {
+  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: localToday().slice(0, 7) }], { key: "PAY1020", onSubmit: () => load() });
+  const g = ui.grid([
+    { key: "employee_code", label: t("field.employee_id"), type: "code", width: 110, frozen: true, total: "count" }, { key: "kind", label: t("field.kind"), width: 190, value: (r) => t("pay.kind." + r.kind) },
+    { key: "amount", label: t("pay.value"), type: "number", digits: 2, width: 130, value: (r) => (r.kind === "unpaid_absence_days" ? r.value : pounds(r.value)) },
+    { key: "note", label: t("field.note"), width: 280 }, { key: "created_by", label: t("pay.by"), type: "code", width: 110 },
+  ], { rowKey: "id", selection: "single", totals: true, layoutKey: "PAY1020", emptyText: t("empty"), onSelect: (sel) => { del.disabled = !sel.length || !can("hr.payroll.write"); } });
+  const del = ui.button({ label: t("delete"), icon: "trash", kind: "danger", disabled: true, onClick: async () => { try { await api("DELETE", "/api/payroll/adjustments/" + g.selected()[0].id); load(); } catch (e) { fail(e); } } });
+  const add = ui.button({ label: t("pay.new_adjustment"), icon: "plus", kind: "primary", disabled: !can("hr.payroll.write"), onClick: () => dialog() });
+  const sc = screen({ code: "PAY1020", title: t("nav.pay_adjustments"), path: [t("g.payroll")], shell, toolbar: [add, del],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("pay-adjustments"), exportLabel: t("export"), columns: () => g.columnsDialog() }, conditions: conds, grid: g });
+  const period = () => conds.values().period || localToday().slice(0, 7);
+  async function load() {
+    g.setLoading();
+    try { g.setRows(await api("GET", "/api/payroll/adjustments?period=" + encodeURIComponent(period()))); sc.result({ chips: conds.chips() }); } catch (e) { g.setError(e.message); }
+  }
+  function dialog() {
+    const emp = ui.input({ dir: "ltr" }), kind = ui.select({ options: ["unpaid_absence_days", "bonus", "deduction"].map((k) => [k, t("pay.kind." + k)]), value: "unpaid_absence_days" }), val = ui.input({ dir: "ltr" }), note = ui.input({}), out = h("div");
+    ui.dialog({ title: t("pay.new_adjustment") + " · " + period(), icon: "id-card", width: 520, body: h("div", { class: "hr-stack" }, ui.banner("info", t("pay.adjustment_help")), h("div", { class: "eco-form" },
+      ui.field(t("field.employee_id"), emp, { required: true }), ui.field(t("field.kind"), kind), ui.field(t("pay.value"), val, { required: true, hint: t("pay.value_hint") }), ui.field(t("field.note"), note)), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("save"), kind: "primary", icon: "save", onClick: async () => {
+        try {
+          const v = kind.value === "unpaid_absence_days" ? Number(val.value) : toMinor(val.value);
+          await api("POST", "/api/payroll/adjustments", { period: period(), employee: emp.value.trim(), kind: kind.value, value: v, note: note.value }); ui.toast({ kind: "ok", title: t("saved") }); load(); return true;
+        } catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  load();
+  return { el: sc.el };
+}
+function payRunsScreen({ shell }) {
+  const money = (minor) => pounds(minor).toLocaleString(S.lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const g = ui.grid([
+    { key: "status", label: t("field.status"), width: 120, frozen: true, render: (r) => ui.badge(t("pay.state." + r.status), PAY_STATE[r.status] || "neutral"), value: (r) => t("pay.state." + r.status) },
+    { key: "period", label: t("field.period"), type: "code", width: 90 }, { key: "run", label: t("pay.run"), type: "number", width: 70 }, { key: "headcount", label: t("pay.headcount"), type: "number", width: 100, total: "sum" },
+    ...[["gross_earnings", "pay.gross"], ["overtime", "pay.overtime"], ["night_allowance", "pay.night"], ["employer_social_insurance", "pay.er_si"], ["employee_social_insurance", "pay.ee_si"], ["salary_tax", "pay.tax"], ["other_deductions", "pay.other"], ["net_payable", "pay.net"]]
+      .map(([k, label]) => ({ key: k, label: t(label), type: "number", digits: 2, width: 120, total: "sum", value: (r) => pounds(r.totals[k]) })),
+    { key: "calculated_by", label: t("pay.calculated_by"), type: "code", width: 120 }, { key: "approved_by", label: t("pay.approved_by"), type: "code", width: 120 }, { key: "pay_date", label: t("pay.pay_date"), type: "date", width: 110 },
+    { key: "delivery", label: t("pay.delivery"), width: 170, value: (r) => (r.delivery ? t("pay.delivery." + r.delivery.state) : "") },
+  ], { rowKey: "key", selection: "single", totals: true, layoutKey: "PAY2010", emptyText: t("pay.no_runs"), onSelect: () => buttons(), onOpen: () => slips() });
+  const sel = () => g.selected()[0];
+  const b = {
+    calc: ui.button({ label: t("pay.calculate"), icon: "table", kind: "primary", disabled: !can("hr.payroll.run"), onClick: () => calcDialog() }),
+    slips: ui.button({ label: t("pay.slips"), icon: "table", disabled: true, onClick: () => slips() }),
+    approve: ui.button({ label: t("act.approve"), icon: "check", disabled: true, onClick: () => approveDialog() }),
+    reverse: ui.button({ label: t("pay.reverse"), icon: "rotate", kind: "danger", disabled: true, onClick: () => reverseDialog() }),
+    send: ui.button({ label: t("pay.send"), icon: "arrow-up", disabled: !can("hr.payroll.approve"), onClick: async () => { try { const r = await api("POST", "/api/payroll/deliver", {}); ui.toast({ kind: r.stopped_by ? "warn" : "ok", title: t("pay.sent", { n: r.delivered }), text: r.stopped_by || "" }); load(); } catch (e) { fail(e); } } }),
+  };
+  function buttons() {
+    const r = sel();
+    b.slips.disabled = !r || !can("hr.payroll.read");
+    b.approve.disabled = !r || r.status !== "calculated" || !can("hr.payroll.approve");
+    b.reverse.disabled = !r || r.status !== "approved" || !can("hr.payroll.approve");
+  }
+  const sc = screen({ code: "PAY2010", title: t("nav.pay_runs"), path: [t("g.payroll")], shell, toolbar: [b.calc, b.slips, b.approve, b.reverse, b.send],
+    standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("pay-runs"), exportLabel: t("export"), columns: () => g.columnsDialog() }, grid: g });
+  async function load() {
+    g.setLoading();
+    try { g.setRows((await api("GET", "/api/payroll/runs")).map((r) => ({ ...r, key: r.period + "#" + r.run }))); sc.result({}); buttons(); } catch (e) { g.setError(e.message); }
+  }
+  const previousMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return ui.isoDate(d).slice(0, 7); };
+  function calcDialog() {
+    const period = ui.input({ value: previousMonth(), dir: "ltr" }), out = h("div");
+    ui.dialog({ title: t("pay.calculate"), icon: "table", width: 480, body: h("div", { class: "hr-stack" }, ui.banner("info", t("pay.calculate_help")), h("div", { class: "eco-form" }, ui.field(t("field.period"), period, { required: true })), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("pay.calculate"), kind: "primary", icon: "table", onClick: async () => {
+        try { const r = await api("POST", "/api/payroll/calculate", { period: period.value.trim() }); ui.toast({ kind: r.warnings.length ? "warn" : "ok", title: t("pay.calculated", { n: r.headcount }), text: r.warnings.join(" · "), keep: !!r.warnings.length }); load(); return true; }
+        catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  async function slips() {
+    const r = sel(); if (!r) return;
+    try {
+      const rows = await api("GET", `/api/payroll/runs/${r.period}/${r.run}/slips`);
+      const sg = ui.grid([
+        { key: "employee_code", label: t("field.employee_id"), type: "code", width: 100, frozen: true, total: "count" }, { key: "cost_center", label: t("pay.cost_center"), type: "code", width: 100 },
+        ...[["basic", "pay.basic"], ["allowance", "pay.allowance"], ["absence", "pay.absence"], ["bonus", "pay.kind.bonus"], ["overtime", "pay.overtime"], ["night_allowance", "pay.night"], ["gross", "pay.gross"], ["si_employee", "pay.ee_si"], ["tax", "pay.tax"], ["other_deductions", "pay.other"], ["net", "pay.net"]]
+          .map(([k, label]) => ({ key: k, label: t(label), type: "number", digits: 2, width: 110, total: "sum", value: (x) => pounds(x[k]) })),
+      ], { rowKey: "employee_code", selection: "single", totals: true, emptyText: t("empty") });
+      sg.setRows(rows);
+      ui.dialog({ title: t("pay.slips") + " · " + r.period + " #" + r.run, icon: "table", width: 1100, body: h("div", { class: "hr-stack" }, sg.el), actions: [{ label: t("close"), kind: "primary", value: true }] });
+    } catch (e) { fail(e); }
+  }
+  function approveDialog() {
+    const r = sel(), date = ui.input({ type: "date", value: r.pay_date }), out = h("div");
+    ui.dialog({ title: t("act.approve") + " · " + r.period + " #" + r.run, icon: "check", width: 560, body: h("div", { class: "hr-stack" }, ui.banner("info", t("pay.approve_help")),
+      ui.props([[t("pay.headcount"), String(r.headcount)], [t("pay.gross"), money(r.totals.gross_earnings + r.totals.overtime + r.totals.night_allowance)], [t("pay.net"), money(r.totals.net_payable)], [t("pay.fingerprint"), r.fingerprint.slice(0, 16)]]),
+      r.warnings.length ? ui.banner("warn", r.warnings.join(" · ")) : null, h("div", { class: "eco-form" }, ui.field(t("pay.pay_date"), date)), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("act.approve"), kind: "primary", icon: "check", onClick: async () => {
+        try { await api("POST", `/api/payroll/runs/${r.period}/${r.run}/approve`, { fingerprint: r.fingerprint, pay_date: date.value }); ui.toast({ kind: "ok", title: t("pay.approved") }); load(); return true; }
+        catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  function reverseDialog() {
+    const r = sel(), reason = ui.input({}), out = h("div");
+    ui.dialog({ title: t("pay.reverse") + " · " + r.period + " #" + r.run, icon: "rotate", width: 520, body: h("div", { class: "hr-stack" }, ui.banner("warn", t("pay.reverse_help")), h("div", { class: "eco-form" }, ui.field(t("field.reason"), reason, { required: true })), out),
+      actions: [{ label: t("cancel"), kind: "ghost", value: false }, { label: t("pay.reverse"), kind: "danger", icon: "rotate", onClick: async () => {
+        try { await api("POST", `/api/payroll/runs/${r.period}/${r.run}/reverse`, { reason: reason.value }); ui.toast({ kind: "ok", title: t("pay.reversed") }); load(); return true; }
+        catch (e) { ui.clear(out, ui.banner("bad", e.message)); return false; } } }] });
+  }
+  load();
+  return { el: sc.el };
+}
+
 const coursesScreen = registerScreen("course", "TRN1010", "nav.courses", (R) => [
   { key: "code", label: t("field.code"), type: "code", width: 110, frozen: true, total: "count" }, { key: "name", label: t("field.name"), width: 220 },
   { key: "skill", label: t("field.skill_id"), width: 170, value: (r) => (R() && R().byId.get(r.skill_id) ? R().label(R().byId.get(r.skill_id)) : "") },
@@ -1975,6 +2132,9 @@ const SCREENS = {
   REC1060: ["nav.contracts", "id-card", "hr.recruitment.read", contractsScreen],
   OVT1010: ["nav.overtime", "clock", "hr.overtime.read", overtimeScreen],
   OVT1020: ["nav.overtime_figures", "table", "hr.overtime.read", overtimeFiguresScreen],
+  PAY2010: ["nav.pay_runs", "table", "hr.payroll.read", payRunsScreen],
+  PAY1010: ["nav.pay_profiles", "chart", "hr.payroll.read", payProfilesScreen],
+  PAY1020: ["nav.pay_adjustments", "edit", "hr.payroll.read", payAdjustmentsScreen],
   TRN1010: ["nav.courses", "bookmark", "hr.training.read", coursesScreen],
   TRN2010: ["nav.sessions", "calendar-check", "hr.training.read", sessionsScreen],
   LEV2010: ["nav.leave_requests", "calendar", "hr.leave.read", leaveRequestsScreen],
@@ -1994,7 +2154,7 @@ const SCREENS = {
   HLP1010: ["nav.help", "bookmark", null, helpCenterScreen],
 };
 const MENU = [["people", "users", ["EMP1010", "EMP2010", "ATT2010", "ADV1010"]], ["planning", "calendar-check", ["SHF3010", "SHF2010", "SHF1010", "SHF1020", "SHF3020", "STF2010"]],
-  ["recruitment", "user-plus", ["REC1010", "REC1020", "REC1030", "REC1040", "REC1060", "REC1050"]], ["overtime", "clock", ["OVT1010", "OVT1020"]], ["training", "bookmark", ["TRN2010", "TRN1010"]], ["leave", "calendar", ["LEV2010", "LEV3010", "LEV1010"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["discipline", "scale", ["DSC2010", "DSC1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060", "HLP1010"]]];
+  ["recruitment", "user-plus", ["REC1010", "REC1020", "REC1030", "REC1040", "REC1060", "REC1050"]], ["overtime", "clock", ["OVT1010", "OVT1020"]], ["payroll", "chart", ["PAY2010", "PAY1010", "PAY1020"]], ["training", "bookmark", ["TRN2010", "TRN1010"]], ["leave", "calendar", ["LEV2010", "LEV3010", "LEV1010"]], ["skills", "tag", ["SKL3010", "SKL2010", "SKL1010"]], ["discipline", "scale", ["DSC2010", "DSC1010"]], ["organisation", "sitemap", ["ORG1010", "ORG1020", "ORG1030"]], ["security", "shield", ["SEC9010", "SEC9020", "SEC9030"]], ["system", "settings", ["SYS9070", "SYS9100", "SYS9060", "HLP1010"]]];
 function showShell() {
   const screens = {};
   for (const [code, [key, icon, perm, create]] of Object.entries(SCREENS)) {

@@ -8,6 +8,20 @@ session that last updated `STATUS.md`). Durable lessons are also collected in `d
 Older, finer-grained records stay where they were written: `project_memory/PROJECT_LOG.md` (decision table, Arabic),
 `MIGRATION.md`, `docs/HR_SECURITY.md`, `.workflow/` (the 2026-09-05 foundation run).
 
+## 2026-10-02 - Payroll built (WP-H6), for the trial on one laptop
+- **What:** the owner lifted the payroll gate and the clean-PC requirement (only this laptop is used for the trial; sample data only).
+  `hr_core/payroll_calc.py` (Egypt 2026 arithmetic in piastres), `hr_core/payroll.py` (salary profiles, adjustments, pay runs, outbox in
+  `data/payroll.db`), four rights (data version 5), thirteen routes, three screens in English and Arabic (`PAY2010`, `PAY1010`, `PAY1020`),
+  the contract schema `hr.payroll_period.v1` copied from GMES, `TEST_HR_PAYROLL.py` (66 checks with hand-computed pay) and 13 planted bugs.
+- **Symptom:** the first reference test failed on an overtime figure I had worked out by hand.
+- **Cause:** the hand calculation used the hourly wage of the 12,000 example (50) for a 20,000 salary (83.33); the code was right.
+- **Fix:** the expectation was recomputed from the salary in the test (225.00 + 141.67) and the working is written beside it.
+- **Lesson:** when a hand-computed expectation disagrees, redo the hand calculation from the inputs of that case before touching the code.
+- **Symptom:** `TEST_HR_REGISTRY.py` was red since the signing work: `eco_inbox.py imports eco_signing`.
+- **Cause:** the standard-library allow-list names the top-level helper modules and `eco_signing` was added later.
+- **Fix:** `eco_signing` joins the list (it is standard library only, like `eco_contract`).
+- **Lesson:** run every test of the repository after adding a top-level module, not only the new one.
+
 ## 2026-09-30 - Documents named another company's system
 - **Symptom:** the UX documents compared the screens with a named vendor's system and quoted its screen codes; the
   repository is public and the owner presents the ecosystem to other factories.

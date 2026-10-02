@@ -14,6 +14,7 @@ from .backup import Backups, BackupError, recover_lost_journal
 from .device import Device
 from .journal import Journal
 from . import discipline, people_ops, scheduling, skills
+from .payroll import FILE as PAYROLL_FILE, PayrollMixin, PayrollStore
 from .people_service import READ as PEOPLE_READ, WRITE as PEOPLE_WRITE, PeopleOpsMixin
 from .registry import ENTITIES, Conflict, Registry, RegistryError
 
@@ -32,7 +33,7 @@ def people_ops_entities():
     return people_ops_ENTITIES
 
 
-class HRService(PeopleOpsMixin):
+class HRService(PeopleOpsMixin, PayrollMixin):
     def __init__(self, data_dir, company_id, company_code="COMPANY", company_name="Company",
                  backup_dir=None, extra_backup_dirs=(), keep=14, allow_new_journal=False, attachments=()):
         self.data_dir = data_dir
@@ -51,7 +52,9 @@ class HRService(PeopleOpsMixin):
         self.auth = Auth(data_dir, self.journal)
         self._load_policy()
         self._eco_inbox = None
-        self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep, attachments)
+        self._payroll_store = PayrollStore(data_dir)      # pay lives in its own database, copied into every backup as an attachment
+        self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep,
+                               [*attachments, (PAYROLL_FILE, self._payroll_store.path, self._payroll_store.lock)])
         self.journal.audit("system", "service.started", "system", {
             "device": self.device.device_id, "signing_backend": signing.BACKEND,
             "cloned_from": self.device.cloned_from, "journal_restored_from": restored_from})
@@ -333,6 +336,7 @@ class HRService(PeopleOpsMixin):
     def close(self):
         self.backups.stop()
         self.auth.close()
+        self._payroll_store.close()
         self.registry.close()
 
 

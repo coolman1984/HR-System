@@ -46,7 +46,7 @@ def _now():
 
 
 # ---------------------------------------------------------------------- the secret
-def _dpapi(data, protect):
+def _dpapi(data, protect, entropy=_ENTROPY):
     """Windows Data Protection API through ctypes (standard library). Machine scope (CRYPTPROTECT_LOCAL_MACHINE):
     the program may run as another Windows user after a restart, but a copy of the file on another PC is useless."""
     import ctypes
@@ -63,9 +63,9 @@ def _dpapi(data, protect):
     fn.restype = wintypes.BOOL
     kernel32.LocalFree.argtypes = [ctypes.c_void_p]
     kernel32.LocalFree.restype = ctypes.c_void_p
-    src, ent = ctypes.create_string_buffer(data, len(data)), ctypes.create_string_buffer(_ENTROPY, len(_ENTROPY))
+    src, ent = ctypes.create_string_buffer(data, len(data)), ctypes.create_string_buffer(entropy, len(entropy))
     blob_in = Blob(len(data), ctypes.cast(src, ctypes.POINTER(ctypes.c_char)))
-    blob_ent = Blob(len(_ENTROPY), ctypes.cast(ent, ctypes.POINTER(ctypes.c_char)))
+    blob_ent = Blob(len(entropy), ctypes.cast(ent, ctypes.POINTER(ctypes.c_char)))
     out = Blob()
     flags = 0x1 | 0x4  # CRYPTPROTECT_UI_FORBIDDEN | CRYPTPROTECT_LOCAL_MACHINE
     if not fn(ctypes.byref(blob_in), None, ctypes.byref(blob_ent), None, None, flags, ctypes.byref(out)):
@@ -77,11 +77,13 @@ def _dpapi(data, protect):
 
 
 class KeyStore:
-    """The GMES key in data/node/gmes.key (never in config.json, a backup, a log line or the audit)."""
+    """The GMES key in data/node/gmes.key (never in config.json, a backup, a log line or the audit). The Mizan key of the payroll link is kept the same
+    way in data/node/mizan.key (another file name and entropy)."""
 
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, filename=KEY_FILE, entropy=_ENTROPY):
         self.dir = os.path.join(data_dir, "node")
-        self.path = os.path.join(self.dir, KEY_FILE)
+        self.path = os.path.join(self.dir, filename)
+        self.entropy = entropy
 
     @staticmethod
     def check(key):
@@ -95,7 +97,7 @@ class KeyStore:
     def save(self, key):
         self.check(key)
         raw = key.encode("ascii")
-        data = _DPAPI_MARK + _dpapi(raw, True) if os.name == "nt" else _PLAIN_MARK + raw
+        data = _DPAPI_MARK + _dpapi(raw, True, self.entropy) if os.name == "nt" else _PLAIN_MARK + raw
         os.makedirs(self.dir, exist_ok=True)
         tmp = self.path + ".tmp"
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # owner only (as device.key)
@@ -114,7 +116,7 @@ class KeyStore:
             return None
         try:
             if data.startswith(_DPAPI_MARK):
-                return _dpapi(data[len(_DPAPI_MARK):], False).decode("ascii") if os.name == "nt" else None
+                return _dpapi(data[len(_DPAPI_MARK):], False, self.entropy).decode("ascii") if os.name == "nt" else None
             if data.startswith(_PLAIN_MARK):
                 return data[len(_PLAIN_MARK):].decode("ascii")
         except (OSError, UnicodeDecodeError):

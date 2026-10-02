@@ -12,7 +12,7 @@ You have no chat history. These files are the memory. Ten minutes, in this order
 ```handoff
 phase: 2.5
 stage: 2.5 one installable product + 2.6 product shell
-updated: 2026-09-30
+updated: 2026-10-02
 ```
 
 ## Where we are
@@ -57,10 +57,11 @@ Eleven new registers and their rules live in `hr_core/people_ops.py` (pure rules
 recruitment and onboarding, overtime, training that qualifies people, leave. Four-eyes rule everywhere: whoever raises a
 requisition, overtime request or leave request does not approve it (the right is checked first, then the "own request"
 rule). Data version 4 gives the built-in profiles their new rights. The overtime policy figures are settings whose source
-note says *verify against Labour Law 14/2025 and the contracts*. Payroll (WP-H6) is **not** built: its gate in
-`docs/HR_PAYROLL_DESIGN.md` §2 is the owner's decision. Screens: `REC1010`-`REC1060`, `OVT1010`, `OVT1020`, `TRN1010`,
+note says *verify against Labour Law 14/2025 and the contracts*. Payroll (WP-H6) was built on 2026-10-02 (next paragraph). Screens: `REC1010`-`REC1060`, `OVT1010`, `OVT1020`, `TRN1010`,
 `TRN2010`, `LEV1010`, `LEV2010`, `LEV3010`, `STF2010`; seen in Chrome on a synthetic company (English; Arabic is proven
 only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, `TEST_HR_PEOPLE_OPS.py`; 19 planted bugs.
+
+**Payroll (2026-10-02, WP-H6, owner's order):** the owner lifted the payroll gate and the clean-PC requirement for the trial on this laptop, with sample data only. `hr_core/payroll_calc.py` is the pure arithmetic in whole piastres; `hr_core/payroll.py` keeps salary profiles, adjustments, pay runs and the outbox in `data/payroll.db` (a backup attachment) and adds the commands to `HRService` (`pay_calculate`, `pay_approve`, `pay_reverse`, `pay_deliver`). The four rights are `hr.payroll.read|write|run|approve` (data version 5: the officer calculates, only the administrator profile approves). A run is approved by someone else who names its fingerprint; the totals go to Mizan signed (`ECO_MIZAN_URL`, `ECO_MIZAN_KEY`) as `hr.payroll_period.v1`, and a cost centre comes from the pay profile or the employee's org unit (`attrs.cost_center`). Attendance reaches pay only as adjustments (absence days) because the locked engine takes spreadsheets. Tests: `TEST_HR_PAYROLL.py` (66 checks), 13 planted bugs.
 
 ## Why we are here
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
@@ -79,7 +80,7 @@ only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, 
 - Every change goes through `hr_core/service.py` (`require()` + audit) with the version the person edited.
 - No personal data leaves HR; no other application's database is touched; `eco_schemas/` and `hr_core/vendor/` are
   never edited here.
-- One truth for pay: HR calculates (later), Mizan books. Payroll stays design only.
+- One truth for pay: HR calculates, Mizan books. Pay data stays in `data/payroll.db`; nothing per person leaves HR.
 - Standard library only in top-level files; synthetic data only; no `data/` in git.
 
 ## Next step
@@ -97,7 +98,7 @@ only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, 
 0b. Shifts (phase 3) and skills (phase 5) were built on the owner's order (2026-09-28); still owed for their gates:
    Excel import of shifts/rosters and a GMES screen for station requirements (planned overtime, leave on the plan and
    training were built on 2026-09-30, see above). Look at the new people-operations screens in Arabic and dark mode.
-   **Payroll is design only** (`docs/HR_PAYROLL_DESIGN.md`): do not build it before its gate (§2 there).
+   Payroll is built (2026-10-02); what is still owed for real use is listed in `docs/HR_PAYROLL_DESIGN.md` §2.
 1. Close phase 2.5: the CI job `windows-installer` is green (31/31 on b3d106d); still owed: the owner's clean-PC run in
    Windows Sandbox; mark phase 2.5 done in `docs/HR_SYSTEM_DESIGN.md` §7 and move the `phase` line here and in
    `STATUS.md` to 3.
@@ -116,8 +117,8 @@ document, never the expectation.
 - Should GMES also use the modern look? (Today: GMES classic, HR modern; both from the same kit.)
 - The penalty schedule's defaults (5 days per violation and per month, 30 days to decide, investigation over one day)
   follow the Egyptian labour law as understood here: have them confirmed by the company's legal adviser before selling.
-- Mizan's Egyptian payroll rules (Law 7/2024 salary tax, social insurance): recorded as design input; code only after
-  the payroll gate (`docs/HR_PAYROLL_DESIGN.md` §2).
+- Mizan's Egyptian payroll rules (Law 7/2024 salary tax, social insurance): now used by `hr_core/payroll_calc.py` (worked examples
+  in `TEST_HR_PAYROLL.py`); have a payroll accountant confirm the rules and rates before real salaries are entered.
 - A code-signing certificate before selling (the "unknown publisher" warning is accepted for trials only).
 - When a standalone customer later adopts Mizan: build the adoption and matching step (planned, ADR-HR-006).
 - The re-upload quirk (same attendance bytes + new auxiliary files are ignored): fix or keep.

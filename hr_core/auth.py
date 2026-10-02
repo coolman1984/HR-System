@@ -57,6 +57,10 @@ PERMISSIONS = {
     "hr.leave.read": "See leave types, requests and balances",
     "hr.leave.write": "Define leave types and enter leave requests",
     "hr.leave.approve": "Approve or reject leave requests (never one's own)",
+    "hr.payroll.read": "See pay runs, totals and every employee's pay slip",
+    "hr.payroll.write": "Keep salary profiles and the month's adjustments (absence days, bonus, deduction)",
+    "hr.payroll.run": "Calculate a month's pay",
+    "hr.payroll.approve": "Approve a pay run (never one's own), send it to accounting, reverse it",
 }
 # Rights added after data version 0: hr_core/upgrade.py gives them to the built-in profiles of older installations.
 ADDED_IN_DATA_VERSION_1 = {"administrator": ["hr.attendance.read", "hr.attendance.upload", "admin.settings.manage"],
@@ -71,13 +75,16 @@ ADDED_IN_DATA_VERSION_4 = {"administrator": ["hr.recruitment.read", "hr.recruitm
                            "hr_officer": ["hr.recruitment.read", "hr.recruitment.write", "hr.overtime.read", "hr.overtime.write", "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write"],
                            "viewer": ["hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"],
                            "auditor": ["hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]}
+ADDED_IN_DATA_VERSION_5 = {"administrator": ["hr.payroll.read", "hr.payroll.write", "hr.payroll.run", "hr.payroll.approve"],
+                           "hr_officer": ["hr.payroll.read", "hr.payroll.write", "hr.payroll.run"]}
 ADMIN_PERMS = {p for p in PERMISSIONS if p.startswith("admin.")}
 BUILTIN_PROFILES = {
     "administrator": ("Administrator", sorted(PERMISSIONS)),
     "hr_officer": ("HR officer", ["hr.org.read", "hr.org.write", "hr.employees.read", "hr.employees.write", "hr.employees.delete", "hr.recycle.restore", "hr.import.run",
                                  "hr.attendance.read", "hr.attendance.upload", "hr.shifts.read", "hr.shifts.write", "hr.skills.read", "hr.skills.write",
                                  "hr.discipline.read", "hr.discipline.write", "hr.recruitment.read", "hr.recruitment.write", "hr.overtime.read", "hr.overtime.write",
-                                 "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write"]),
+                                 "hr.training.read", "hr.training.write", "hr.leave.read", "hr.leave.write",
+                                 "hr.payroll.read", "hr.payroll.write", "hr.payroll.run"]),
     "viewer": ("Viewer", ["hr.org.read", "hr.employees.read", "hr.attendance.read", "hr.shifts.read", "hr.skills.read", "hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]),
     "auditor": ("Auditor", ["hr.org.read", "hr.employees.read", "admin.audit.read", "admin.system.read", "hr.shifts.read", "hr.skills.read",
                          "hr.discipline.read", "hr.recruitment.read", "hr.overtime.read", "hr.training.read", "hr.leave.read"]),

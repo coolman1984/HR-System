@@ -62,6 +62,7 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 | The product shell (phase 2.6, UX): one application shell built from the ecosystem's interface kit (menu tree, screen search with actions, tabs, standard screen with subtitle and help, grid with column filters, grouping and presets, dialogs); the kit is the unchanged, hash-pinned copy from GMES (fonts included); Mizan's modern look by default; server values written as text only | `hr_core/web/app.js`, `hr_core/web/hr.css`, `hr_core/web/eco-ui/`, `hr_core/eco_ui_pin.json` | `TEST_HR_DELIVERY.py` (96), screenshots `docs/ux/` (taken before the modern look) |
 | `discipline` (phase 6, 2026-09-28, owner's order) — the company's penalty schedule (violation, threshold, repeat window, the penalty for each repeat), violations proposed from the planned days against attendance (late, early leave, absence; never a leave day, a rest day or a holiday; nothing proposed twice), decisions by a separate right (`hr.discipline.approve`; who and when from the server), the law's limits (5 days per violation and per month, 30 days to decide, a written investigation over one day), decisions final, penalties in days never money; data version 3; screens Violations and penalties (`DSC2010`), Penalty schedule (`DSC1010`), the Discipline tab of an employee, Advisor warnings before the 30-day limit | `hr_core/discipline.py`, `hr_core/registry.py`, `hr_core/service.py`, `hr_core/api.py`, `hr_core/upgrade.py`, `hr_core/web/app.js` | `TEST_HR_DISCIPLINE.py` (26) |
 | `recruitment` support: what manufacturing tells HR (WP-H1, 2026-09-30) — machine keys (`hk_...`, shown once, only the hash kept, scope `eco.inbox.write`, revocable), `POST /eco/v1/inbox` for `mes.crew_requirement.v1` and `mes.labor_day.v1` (contract-checked, own company only, each event once, an older version never replaces a newer one, refusals kept), the staffing gap per day and shift (heads and required skills, expired qualifications do not count, `STF2010`), labour facts beside the plan (`GET /api/labour/evidence`: worked in production vs planned paid); the labour minutes never leave as pay and no personal data enters | `hr_core/eco_inbox.py`, `hr_core/api.py`, `hr_core/web/app.js` | `TEST_HR_ECO_INBOX.py` (17) |
+| `payroll` (WP-H6, 2026-10-02, owner's order: sample data, trial on this laptop; see `docs/HR_PAYROLL_DESIGN.md`) — salary profiles (effective-dated, integer piastres, in their own `data/payroll.db`, copied into every backup), the month's adjustments (unpaid absence days, bonus, deduction), and a pay run per month: everyone with a profile is calculated from the plan, approved overtime (basic / 240 with the company's premiums), night allowance, unpaid leave, absence, social insurance (11 % / 18.75 % on the insurable wage kept between 2,700 and 16,700), salary tax (Law 7/2024 brackets, personal exemption 20,000, rounded down to 10 pounds) and the martyrs' fund; the same data gives the same fingerprint; a run is calculated, approved by someone else who names the fingerprint they saw, then sent signed to Mizan as `hr.payroll_period.v1` (totals per cost centre and account key, no names; each cost centre balances); an approved run never changes (reverse it, calculate a new run); an administrator sets Mizan's address and key (PUT /api/payroll/target, the key kept like the GMES key, never in a backup or the audit); a refusal from Mizan stays visible; four rights (`hr.payroll.read|write|run|approve`, data version 5); screens `PAY2010`, `PAY1010`, `PAY1020` in English and Arabic | `hr_core/payroll_calc.py`, `hr_core/payroll.py`, `TEST_HR_PAYROLL.py` (66 checks, hand-computed), 13 planted bugs |
 | `recruitment`, `overtime`, `training`, `leave` (WP-H2 to WP-H5, 2026-09-30) — eleven registers in the signed registry: headcount plan (proposed from GMES crew needs plus a relief allowance, never overwriting a person's own plan), agency, hiring request (starts as a draft, approved by someone else, frozen after approval, the plan limits it unless a reason is written), candidate (stages only move forward, hired only through Hire), onboarding task, contract (fixed-term ends its employee on the last day); **Hire** creates the employee, the contract and the onboarding checklist and fills the request in one journal line; a new hire is not schedulable on a line before the medical check, protective equipment and ESD training; courses and sessions where a pass grants or renews the qualification (never lowering a higher one) and completes the matching onboarding task; overtime requests approved by someone else with the daily/weekly/monthly caps of a settable policy (the defaults name their source and say verify) and the monthly figures payroll will need (minutes by kind, premiums in basis points, substitute days, exceptions); leave types, requests (days counted on the person's calendar, no overlaps), approval by someone else, balances with carry-over, approved leave takes the person out of the plan; eleven new rights (`hr.recruitment\|overtime\|training\|leave.*`), data version 4; screens `REC1010`-`REC1060`, `OVT1010`, `OVT1020`, `TRN1010`, `TRN2010`, `LEV1010`, `LEV2010`, `LEV3010`, English and Arabic | `hr_core/people_ops.py`, `hr_core/people_service.py`, `hr_core/registry.py`, `hr_core/service.py`, `hr_core/api.py`, `hr_core/auth.py`, `hr_core/upgrade.py`, `hr_core/web/app.js` | `TEST_HR_PEOPLE_OPS.py` (60), `TEST_HR_DELIVERY.py` (texts); seen in Chrome on a synthetic company (approve, candidate to hire, overtime approval) |
 | Employee journey (`EMP2010`): one person's facts from every module on one timeline (joining, team, account, shifts, day changes, qualifications, attended days, lateness, absences, leave, violations, decisions, two weeks ahead), a week-by-week time-lapse with running figures, and the person's activity from the audit | `hr_core/web/app.js` | seen in Chrome on the demo; `TEST_HR_DELIVERY.py` (its texts) |
 | Guide system (Mizan's design): guide mode off/basic/full, F1 help panel (the screen's help, "how do I" search, keys), 8 guided tours across screens, help center (`HLP1010`), the Advisor's warnings on the record itself, tips inside the forms | `hr_core/web/app.js`, kit `drawer()` and `tour()` | seen in Chrome; `TEST_HR_DELIVERY.py` (every text in both languages) |
@@ -101,7 +102,7 @@ from the program, outbound network blocked). Still owed before the gate closes: 
 
 | What | Why not built |
 |---|---|
-| `payroll` — HR calculates pay; Mizan books one summarized entry per period (`hr.payroll_period.v1`); detailed design: `docs/HR_PAYROLL_DESIGN.md` (data, calculation order, contract, four-eyes rights, tests) | Needs stable employees, attendance, leave and overtime first (`docs/HR_SYSTEM_DESIGN.md` §6; owner's decision 2026-09-28: design now, build after the gate). Mizan never stores employees or computes pay. |
+| _(nothing: payroll was built on 2026-10-02, see Built and tested)_ | |
 
 ## Next phase — 3: shifts, calendars, schedules and assignments
 
@@ -139,6 +140,7 @@ python TEST_HR_WORKFORCE.py
 python TEST_HR_DISCIPLINE.py
 python TEST_HR_ECO_INBOX.py         what manufacturing tells HR: keys, crew requirements, labour facts, staffing gap
 python TEST_HR_PEOPLE_OPS.py         recruitment, onboarding, overtime, training that qualifies, leave
+python TEST_HR_PAYROLL.py            payroll: hand-computed pay, four-eyes approval, what Mizan receives
 python TEST_DOCS_CURRENT.py
 python migration/mutations.py           every planted bug caught
 python BUILD_PROJECT.py
@@ -160,19 +162,19 @@ open; `stage` is the step inside it; `updated` is the date of the session that l
 ```inventory
 phase: 2.5
 stage: 2.5 one installable product + 2.6 product shell
-updated: 2026-09-30
+updated: 2026-10-02
 done_phases: 1 2
-hr_core: api app attendance auth backup canonical clock device discipline eco_inbox eco_link home importer journal modules people_ops people_service registry scheduling service signing skills upgrade version web
+hr_core: api app attendance auth backup canonical clock device discipline eco_inbox eco_link home importer journal modules payroll payroll_calc people_ops people_service registry scheduling service signing skills upgrade version web
 root_python: BUILD_PROJECT CHECK_ENVIRONMENT CUSTOM_RULES SMOKE_TEST calculation_engine eco_contract eco_publisher eco_signing engine hr_main hr_registry hr_server
-root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_DISCIPLINE TEST_HR_ECO_INBOX TEST_HR_FOUNDATION TEST_HR_PEOPLE_OPS TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_SIMULATION TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
-contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1 eco.qualification.v1 eco.schedule_day.v1 mes.crew_requirement.v1 mes.labor_day.v1
+root_python: TEST_DOCS_CURRENT TEST_ECO_PUBLISHER TEST_HR_DELIVERY TEST_HR_DISCIPLINE TEST_HR_ECO_INBOX TEST_HR_FOUNDATION TEST_HR_PAYROLL TEST_HR_PEOPLE_OPS TEST_HR_REGISTRY TEST_HR_SECURITY TEST_HR_SIMULATION TEST_HR_WORKFORCE TEST_INT01_MULTI_SOURCE TEST_INT02_ROSTER_LEAVE_LINK TEST_INT03_HTTP_MULTI_UPLOAD TEST_MIGRATION_EQUIVALENCE
+contracts: canonical-v1 eco.attendance_day.v1 eco.employee.v1 eco.envelope.v1 eco.qualification.v1 eco.schedule_day.v1 hr.payroll_period.v1 mes.crew_requirement.v1 mes.labor_day.v1
 entities: org_unit job position employee shift work_calendar shift_assignment roster_override skill employee_skill penalty_rule violation headcount_plan agency hire_requisition candidate onboarding_task contract overtime_request course training_session leave_type leave_request
 permissions: hr.org.read hr.org.write hr.employees.read hr.employees.write hr.employees.delete hr.recycle.restore
 permissions: hr.import.run admin.users.manage admin.audit.read admin.backup.manage admin.backup.restore admin.system.read
 permissions: hr.attendance.read hr.attendance.upload admin.settings.manage hr.shifts.read hr.shifts.write hr.skills.read
 permissions: hr.skills.write hr.discipline.read hr.discipline.write hr.discipline.approve hr.recruitment.read hr.recruitment.write
 permissions: hr.recruitment.approve hr.overtime.read hr.overtime.write hr.overtime.approve hr.training.read hr.training.write
-permissions: hr.leave.read hr.leave.write hr.leave.approve
+permissions: hr.leave.read hr.leave.write hr.leave.approve hr.payroll.read hr.payroll.write hr.payroll.run hr.payroll.approve
 module: kernel built
 module: attendance built
 module: leave built
@@ -182,7 +184,7 @@ module: overtime built
 module: skills built
 module: training built
 module: discipline built
-module: payroll design_only
+module: payroll built
 command: hr_server serve
 command: hr_server create-admin
 command: hr_server backup
@@ -226,6 +228,21 @@ route: GET /api/leave/balance
 route: GET /api/overtime/figures
 route: GET /api/overtime/policy
 route: PUT /api/overtime/policy
+route: GET /api/payroll/target
+route: PUT /api/payroll/target
+route: GET /api/payroll/profiles
+route: PUT /api/payroll/profiles/([^/]+)
+route: GET /api/payroll/adjustments
+route: POST /api/payroll/adjustments
+route: DELETE /api/payroll/adjustments/(\d+)
+route: GET /api/payroll/runs
+route: POST /api/payroll/calculate
+route: GET /api/payroll/runs/(\d{4}-\d{2})/(\d+)
+route: GET /api/payroll/runs/(\d{4}-\d{2})/(\d+)/slips
+route: POST /api/payroll/runs/(\d{4}-\d{2})/(\d+)/approve
+route: POST /api/payroll/runs/(\d{4}-\d{2})/(\d+)/reverse
+route: POST /api/payroll/runs/(\d{4}-\d{2})/(\d+)/retry
+route: POST /api/payroll/deliver
 route: GET /api/staffing/gap
 route: GET /api/admin/users
 route: POST /api/admin/users
@@ -246,5 +263,5 @@ route: PUT /api/admin/settings
 route: GET /api/admin/integration
 route: PUT /api/admin/integration
 route: POST /api/admin/integration/run
-mutations: 102
+mutations: 115
 ```

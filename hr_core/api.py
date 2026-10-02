@@ -205,6 +205,67 @@ def make_handler(service, product=None):
     @route("PUT", "/api/overtime/policy")
     def overtime_policy_put(h, body, user):
         return 200, service.set_overtime_policy(user, body, h.ip)
+    # -------------------------------------------------------------- payroll (hr_core/payroll.py, WP-H6)
+    @route("GET", "/api/payroll/target")
+    def pay_target_get(h, body, user):
+        return 200, service.pay_target(user, h.ip)
+
+    @route("PUT", "/api/payroll/target")
+    def pay_target_put(h, body, user):
+        return 200, service.set_pay_target(user, body.get("url"), body.get("key"), h.ip)
+
+    @route("GET", "/api/payroll/profiles")
+    def pay_profiles(h, body, user):
+        return 200, service.pay_profiles(user, h.ip)
+
+    @route("PUT", "/api/payroll/profiles/([^/]+)")
+    def pay_profile_put(h, body, user, code):
+        return 200, service.set_pay_profile(user, code, body.get("fields") or {}, h.ip)
+
+    @route("GET", "/api/payroll/adjustments")
+    def pay_adjustments(h, body, user):
+        return 200, service.pay_adjustments(user, h.query.get("period", ""), h.ip)
+
+    @route("POST", "/api/payroll/adjustments")
+    def pay_adjustment_add(h, body, user):
+        return 201, service.add_pay_adjustment(user, body.get("period", ""), body.get("employee", ""), body.get("kind", ""), body.get("value"), body.get("note"), h.ip)
+
+    @route("DELETE", r"/api/payroll/adjustments/(\d+)")
+    def pay_adjustment_remove(h, body, user, adjustment_id):
+        return 200, service.remove_pay_adjustment(user, adjustment_id, h.ip)
+
+    @route("GET", "/api/payroll/runs")
+    def pay_runs(h, body, user):
+        return 200, service.pay_runs(user, h.ip)
+
+    @route("POST", "/api/payroll/calculate")
+    def pay_calculate(h, body, user):
+        return 200, service.pay_calculate(user, body.get("period", ""), h.ip)
+
+    @route("GET", r"/api/payroll/runs/(\d{4}-\d{2})/(\d+)")
+    def pay_run(h, body, user, period, run):
+        return 200, service.pay_run(user, period, run, h.ip)
+
+    @route("GET", r"/api/payroll/runs/(\d{4}-\d{2})/(\d+)/slips")
+    def pay_slips(h, body, user, period, run):
+        return 200, service.pay_slips(user, period, run, h.query.get("employee") or None, h.ip)
+
+    @route("POST", r"/api/payroll/runs/(\d{4}-\d{2})/(\d+)/approve")
+    def pay_approve(h, body, user, period, run):
+        return 200, service.pay_approve(user, period, run, body.get("fingerprint", ""), body.get("pay_date"), h.ip)
+
+    @route("POST", r"/api/payroll/runs/(\d{4}-\d{2})/(\d+)/reverse")
+    def pay_reverse(h, body, user, period, run):
+        return 200, service.pay_reverse(user, period, run, body.get("reason", ""), h.ip)
+
+    @route("POST", r"/api/payroll/runs/(\d{4}-\d{2})/(\d+)/retry")
+    def pay_retry(h, body, user, period, run):
+        return 200, service.pay_retry(user, period, run, h.ip)
+
+    @route("POST", "/api/payroll/deliver")
+    def pay_deliver(h, body, user):
+        return 200, service.pay_deliver(user, h.ip)
+
     @route("GET", "/api/staffing/gap")
     def staffing(h, body, user):
         from . import scheduling

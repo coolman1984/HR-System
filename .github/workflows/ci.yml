@@ -33,6 +33,7 @@ jobs:
       - run: python TEST_HR_DISCIPLINE.py
       - run: python TEST_HR_ECO_INBOX.py
       - run: python TEST_HR_PEOPLE_OPS.py
+      - run: python TEST_HR_PAYROLL.py
       - run: python TEST_HR_SIMULATION.py
       - run: python TEST_DOCS_CURRENT.py
       - run: python migration/mutations.py
