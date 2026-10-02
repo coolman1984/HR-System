@@ -63,7 +63,11 @@ only by the key-parity test, not yet looked at). Tests: `TEST_HR_ECO_INBOX.py`, 
 
 **Payroll (2026-10-02, WP-H6, owner's order):** the owner lifted the payroll gate and the clean-PC requirement for the trial on this laptop, with sample data only. `hr_core/payroll_calc.py` is the pure arithmetic in whole piastres; `hr_core/payroll.py` keeps salary profiles, adjustments, pay runs and the outbox in `data/payroll.db` (a backup attachment) and adds the commands to `HRService` (`pay_calculate`, `pay_approve`, `pay_reverse`, `pay_deliver`). The four rights are `hr.payroll.read|write|run|approve` (data version 5: the officer calculates, only the administrator profile approves). A run is approved by someone else who names its fingerprint; the totals go to Mizan signed (`ECO_MIZAN_URL`, `ECO_MIZAN_KEY`) as `hr.payroll_period.v1`, and a cost centre comes from the pay profile or the employee's org unit (`attrs.cost_center`). Attendance reaches pay only as adjustments (absence days) because the locked engine takes spreadsheets. Tests: `TEST_HR_PAYROLL.py` (66 checks), 13 planted bugs.
 
+Review repairs (2026-10-02): approved leave cannot change person/type/dates/days, even with cancellation; cancel and create a fresh approval request. Cross-year leave and carryover checks use each year's actual working days. Overtime policy is a backup attachment in `settings.db`, with legacy JSON imported once and data version 6. Existing backups made before this repair cannot recover a policy they never contained. The API's compensating restore still changes registry rows only; disaster recovery copies verified attachments into a fresh installation. Payroll remains synthetic until its rules are confirmed by the payroll accountant.
+
 ## Why we are here
+Chrome-only startup (2026-10-02): `hr_main.py` opens URLs through the owner's mandatory external open_chrome.py helper, with the user-profile fallback. Missing helper/interpreter prints the URL. `Start-HR-Demo.bat -NoBrowser` (also `--background`) starts the demo with `--no-browser`; it does not depend on the Windows autostart preference. GUI execution is outside the synthetic startup regression checks.
+
 - The product began as an Excel attendance tool (Department-automation, 2026-09-05) and was migrated with its history
   on 2026-09-27 when the ecosystem needed one owner for people (`MIGRATION.md`).
 - The registry came first because every other HR fact hangs on an employee; security came second (owner's order:
@@ -137,3 +141,5 @@ document, never the expectation.
 4. `docs/LESSONS.md`: anything learned the hard way.
 5. The design documents when behaviour, contracts or phases change; `project_memory/PROJECT_LOG.md` for decisions.
 6. All tests, all planted bugs, GMES's HR end-to-end test. Then commit and push.
+
+Inbox recovery follow-up (2026-10-02): `GET /api/admin/eco-keys` adds `inbox.unresolved_rejections`; readiness uses that counter, while `rejected` keeps historical rejected source/id rows. Retry of the exact event after repairing the consumer resolves readiness without deleting evidence. Existing `GET /api/payroll/target` exposes effective `url` and `key_set` for optional payroll connection checks.

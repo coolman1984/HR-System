@@ -2,7 +2,8 @@
 # It never touches a real installation. First run: builds the demo (about 20 seconds). Then: starts it and opens it.
 #   Start-HR-Demo.bat            start (build if missing)
 #   Start-HR-Demo.bat -Reset     rebuild the demo from scratch, then start
-param([switch]$Reset, [int]$Port = 8790, [string]$Folder = '')
+#   Start-HR-Demo.bat -NoBrowser start without opening Chrome (also accepts --background)
+param([switch]$Reset, [switch]$NoBrowser, [int]$Port = 8790, [string]$Folder = '')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 if (-not $Folder) { $Folder = Join-Path (Split-Path -Parent $repo) 'HR-Demo' }
@@ -23,4 +24,7 @@ Write-Host ''
 Write-Host "HR-System DEMO  ->  http://127.0.0.1:$Port/" -ForegroundColor Green
 Write-Host '  Sign in: admin / 123     Other users (mona.hassan, karim.adel, omar.farouk ...): Demo-2026!pass'
 Write-Host '  Close this window to stop the demo.'
-& $python hr_main.py --port $Port
+$serverArgs = @('hr_main.py', '--port', $Port)
+if ($NoBrowser) { $serverArgs += '--no-browser' }
+& $python @serverArgs
+exit $LASTEXITCODE

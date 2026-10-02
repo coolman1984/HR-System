@@ -140,7 +140,7 @@ class EcoInbox:
                     return {"id": eid, "result": "duplicate"}
                 result = self._crew(env["data"]) if env["type"] == "mes.crew_requirement.v1" else self._labor(env["data"])
                 self.db.execute("INSERT INTO inbox (source, event_id, type, result, received_at) VALUES (?, ?, ?, ?, ?)", (src, eid, env["type"], result, _now()))
-                self.db.execute("DELETE FROM inbox_reject WHERE source = ? AND event_id = ?", (src, eid))
+                # Retain the rejection record; status distinguishes unresolved source/event ids.
                 self.db.execute("COMMIT")
             except Exception:
                 self.db.execute("ROLLBACK")
@@ -178,6 +178,7 @@ class EcoInbox:
     def status(self):
         q = lambda sql: self.db.execute(sql).fetchone()[0]  # noqa: E731
         return {"received": q("SELECT COUNT(*) FROM inbox"), "rejected": q("SELECT COUNT(*) FROM inbox_reject"),
+                "unresolved_rejections": q("SELECT COUNT(*) FROM inbox_reject r WHERE NOT EXISTS (SELECT 1 FROM inbox i WHERE i.source = r.source AND i.event_id = r.event_id)"),
                 "crew_rows": q("SELECT COUNT(*) FROM crew_requirement WHERE headcount > 0"),
                 "last": q("SELECT MAX(received_at) FROM inbox")}
 

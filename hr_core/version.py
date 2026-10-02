@@ -7,6 +7,6 @@ pre-update backup, and refuses data written by a newer program.
 
 PRODUCT = "HR-System"
 VERSION = "1.0.0"
-DATA_VERSION = 5
+DATA_VERSION = 6
 DEVELOPER = "Mohamed Fawzy"
 COPYRIGHT = "(c) 2026 Mohamed Fawzy"

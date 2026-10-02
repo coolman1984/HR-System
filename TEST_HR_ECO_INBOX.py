@@ -159,6 +159,24 @@ try:
 finally:
     del os.environ["ECO_REQUIRE_SIGNATURE"]
 
+# The same immutable envelope can be accepted after the consumer's configuration is repaired.
+# Readiness counts unresolved source/id pairs while rejection evidence remains available.
+inbox = svc.eco_inbox()
+before = call("GET", "/api/admin/eco-keys")[1]["inbox"]
+retry_event = crew("FA-RETRY", 1, date="2026-10-11")
+try:
+    inbox.company_id = str(uuid.uuid4())
+    rejected = call("POST", "/eco/v1/inbox", {"events": [retry_event]}, key=KEY, session=False)[1]["results"][0]
+finally:
+    inbox.company_id = COMPANY
+blocked = call("GET", "/api/admin/eco-keys")[1]["inbox"]
+check("rejection_increases_historical_and_unresolved_counts", rejected["result"] == "rejected" and blocked["rejected"] == before["rejected"] + 1 and blocked["unresolved_rejections"] == before["unresolved_rejections"] + 1, blocked)
+accepted = call("POST", "/eco/v1/inbox", {"events": [retry_event]}, key=KEY, session=False)[1]["results"][0]
+recovered = call("GET", "/api/admin/eco-keys")[1]["inbox"]
+check("retry_of_the_same_event_resolves_only_the_readiness_counter", accepted["result"] == "applied" and recovered["unresolved_rejections"] == before["unresolved_rejections"] and recovered["rejected"] == blocked["rejected"], recovered)
+check("successful_retry_preserves_the_original_rejection_evidence", inbox.db.execute("SELECT code FROM inbox_reject WHERE source = ? AND event_id = ?", (retry_event["source"], retry_event["id"])).fetchone()[0] == "eco.foreign_company")
+check("duplicate_retry_does_not_resurrect_unresolved_rejections", call("POST", "/eco/v1/inbox", {"events": [retry_event]}, key=KEY, session=False)[1]["results"][0]["result"] == "duplicate" and call("GET", "/api/admin/eco-keys")[1]["inbox"]["unresolved_rejections"] == recovered["unresolved_rejections"])
+
 server.shutdown()
 print(json.dumps(results, indent=2))
 print("TEST_HR_ECO_INBOX: all", len(results), "checks passed")

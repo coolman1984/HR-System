@@ -179,6 +179,26 @@ check("unused_days_carry_over_up_to_the_limit_for_someone_employed_the_year_befo
 big = save(officer, "leave_request", "LV-3", {"employee_id": e1["id"], "leave_type_id": annual["id"], "from_date": "2026-11-01", "to_date": "2026-12-30"})
 check("leave_beyond_the_balance_cannot_be_approved", refused("leave.insufficient", lambda: save(boss, "leave_request", "LV-3", {"status": "approved"}, big["ver"])))
 check("unpaid_leave_has_no_cap", save(officer, "leave_request", "LV-4", {"employee_id": e2["id"], "leave_type_id": unpaid["id"], "from_date": "2026-11-01", "to_date": "2026-12-30"})["days"] >= 50)
+check("approved_leave_cannot_be_edited_by_the_officer_who_only_may_write", refused("leave.frozen", lambda: save(officer, "leave_request", "LV-1", {"from_date": "2027-04-01", "to_date": "2027-05-01"}, lv["ver"])))
+check("approved_leave_cannot_change_person_type_or_days_either", refused("leave.frozen", lambda: save(officer, "leave_request", "LV-1", {"days": 1}, lv["ver"])))
+check("cancelling_cannot_rewrite_the_approved_dates", refused("leave.frozen", lambda: save(officer, "leave_request", "LV-1", {"status": "cancelled", "from_date": "2027-04-01", "to_date": "2027-05-01"}, lv["ver"])))
+check("approved_leave_can_still_be_cancelled", save(officer, "leave_request", "LV-1", {"status": "cancelled"}, lv["ver"])["status"] == "cancelled")
+lv = save(officer, "leave_request", "LV-1B", {"employee_id": e1["id"], "leave_type_id": annual["id"], "from_date": "2026-10-19", "to_date": "2026-10-23"})
+lv = save(boss, "leave_request", "LV-1B", {"status": "approved"}, lv["ver"])      # the same days again, for what follows
+ny = save(officer, "leave_request", "LV-NY", {"employee_id": e2["id"], "leave_type_id": annual["id"], "from_date": "2026-12-31", "to_date": "2027-01-04"})
+check("leave_over_new_year_counts_its_working_days", ny["days"] == 4, ny)                                          # Thu 31 Dec, then Sat, Sun, Mon: Friday 1 January is a rest day
+save(boss, "leave_request", "LV-NY", {"status": "approved"}, ny["version"] if "version" in ny else ny["ver"])
+left = lambda y: [b for b in svc.leave_balance_of(officer, "E000002", y)["balances"] if b["leave_type"] == "ANNUAL"][0]
+check("each_year_is_charged_for_its_own_days", left(2026)["used"] == 1 and left(2027)["used"] == 3 and left(2026)["left"] == 25 and left(2027)["left"] == 23, [left(2026), left(2027)])
+
+tiny = save(officer, "leave_type", "TINY", {"name": "Synthetic capped leave", "paid": 1, "annual_days": 1, "carry_over_days": 1})
+carry = save(officer, "leave_request", "LV-CARRY", {"employee_id": e1["id"], "leave_type_id": tiny["id"], "from_date": "2026-12-31", "to_date": "2027-01-03"})
+check("approval_reduces_next_year_carryover_by_the_proposed_prior_year_days", refused("leave.insufficient", lambda: save(boss, "leave_request", "LV-CARRY", {"status": "approved"}, carry["ver"])))
+from datetime import date  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+with patch.object(people_ops.Schedule, "day", return_value={"status": "rest"}):
+    shares = [people_ops.days_in_year(reg, e1["id"], date(2026, 12, 31), date(2027, 1, 1), 1, y) for y in (2026, 2027)]
+check("manual_cross_year_leave_on_rest_days_does_not_crash", sum(shares) == 1, shares)
 
 # ================================================================== 6. overtime
 check("overtime_is_asked_before_it_is_worked", refused("ot.past", lambda: save(officer, "overtime_request", "OT-0", {"employee_id": e1["id"], "work_date": "2026-09-01", "planned_minutes": 60, "kind": "day", "reason": "late order"})))
@@ -217,6 +237,30 @@ svc.create_user(admin, "watcher", "Watcher", "Admin-2026!x", "viewer")
 watcher = sign_in("watcher")
 check("a_viewer_sees_recruitment_but_changes_nothing", svc.onboarding_status(watcher, "E000003")["employee"] == "E000003" and refused("perm.denied", lambda: svc.hire(watcher, "CAN-0001", {})) and refused("perm.denied", lambda: save(watcher, "candidate", "CAN-0100", {"display_name": "X"})))
 check("the_hr_officer_cannot_approve_requisitions_overtime_or_leave", not any(p in svc.auth.permissions(officer) for p in ("hr.recruitment.approve", "hr.overtime.approve", "hr.leave.approve")))
+
+# the company's overtime policy is in every backup, and comes back from one on a fresh data folder
+import sqlite3  # noqa: E402
+made = svc.backups.create("admin", "manual")
+with sqlite3.connect(os.path.join(made["path"], "settings.db")) as policy_db:
+    saved = policy_db.execute("SELECT value FROM setting WHERE key = 'overtime_policy'").fetchone()
+check("the_overtime_policy_is_in_the_backup", saved is not None and json.loads(saved[0])["max_weekly_ot_minutes"] == 200, saved)
+fresh = os.path.join(TMP, "fresh")
+os.makedirs(fresh)
+import shutil  # noqa: E402
+shutil.copy(os.path.join(made["path"], "settings.db"), os.path.join(fresh, "settings.db"))
+from hr_core.people_service import SettingsStore  # noqa: E402
+check("a_fresh_folder_gets_the_policy_back_not_the_defaults", SettingsStore(fresh).get("overtime_policy")["max_weekly_ot_minutes"] == 200)
+
+# Legacy JSON is imported once; reopening preserves the backed-up database policy.
+legacy = os.path.join(TMP, "legacy")
+os.makedirs(legacy)
+Path(legacy, "overtime_policy.json").write_text(json.dumps({"max_weekly_ot_minutes": 123}), encoding="utf-8")
+oldsvc = HRService(legacy, COMPANY)
+check("legacy_policy_is_migrated_to_the_settings_attachment", oldsvc._settings.get("overtime_policy")["max_weekly_ot_minutes"] == 123)
+oldsvc._settings.put("overtime_policy", {"max_weekly_ot_minutes": 456})
+oldsvc._load_policy()
+check("legacy_json_does_not_overwrite_a_restored_policy", oldsvc.registry.overtime_policy["max_weekly_ot_minutes"] == 456)
+oldsvc.close()
 
 print(json.dumps(results, indent=2))
 print("TEST_HR_PEOPLE_OPS: all", len(results), "checks passed")

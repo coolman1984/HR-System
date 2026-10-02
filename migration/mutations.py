@@ -228,7 +228,16 @@ MUTATIONS = [
     ("anybody who may sign in can read the salaries", "hr_core/payroll.py",
      'self.require(user, "hr.payroll.read", ip, "payroll.profiles")', 'self.require(user, "self", ip, "payroll.profiles")', "TEST_HR_PAYROLL.py"),
     ("the pay database is left out of the backup", "hr_core/service.py",
-     "[*attachments, (PAYROLL_FILE, self._payroll_store.path, self._payroll_store.lock)]", "[*attachments]", "TEST_HR_PAYROLL.py"),
+     ", (PAYROLL_FILE, self._payroll_store.path, self._payroll_store.lock)", "", "TEST_HR_PAYROLL.py"),
+    # project review 2026-10-02 (F01, F13, F14)
+    ("approved leave can be edited by someone who may only write", "hr_core/people_service.py",
+     'if cur and cur["status"] == "approved":', "if False:", "TEST_HR_PEOPLE_OPS.py"),
+    ("leave over New Year is charged to its first year only", "hr_core/people_ops.py",
+     "    if first.year == last.year:\n        return int(days) if first.year == year else 0", "    if True:\n        return int(days) if first.year == year else 0", "TEST_HR_PEOPLE_OPS.py"),
+    ("the overtime policy is left out of the backup", "hr_core/service.py",
+     ", (SETTINGS_FILE, self._settings.path, self._settings.lock)])", "])", "TEST_HR_PEOPLE_OPS.py"),
+    ("a successful retry erases its rejection evidence", "hr_core/eco_inbox.py",
+     "                # Retain the rejection record; status distinguishes unresolved source/event ids.", '                self.db.execute("DELETE FROM inbox_reject WHERE source = ? AND event_id = ?", (src, eid))', "TEST_HR_ECO_INBOX.py"),
     # stage 3.0: the continuity documents stay tied to the code (TEST_DOCS_CURRENT.py)
     ("a module's status changes without the documents", "hr_core/modules.py",
      '"depends_on": ["attendance", "leave", "overtime", "shifts"], "status": "built"', '"depends_on": ["attendance", "leave", "overtime", "shifts"], "status": "design_only"', "TEST_DOCS_CURRENT.py"),

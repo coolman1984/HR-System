@@ -1,5 +1,27 @@
 # HISTORY
 
+## 2026-10-02 — Chrome-only startup and unattended demo
+- **Symptom:** installed/source startup used the default browser handler, and the demo launcher could not suppress browser opening.
+- **Cause:** `hr_main.py` called `webbrowser.open`; the demo PowerShell script accepted no browser suppression flag.
+- **Fix:** launch only the owner's external open_chrome.py helper (primary and user-profile fallback); source uses its interpreter, frozen startup finds child Python. An unavailable helper prints the URL. Demo `-NoBrowser` and `--background` forward `--no-browser`, independently of the Windows autostart setting.
+- **Lesson:** desktop-isolated startup must use the interactive Chrome helper; unattended validation must suppress browser actions explicitly. Synthetic delivery checks mock helper execution and cover source/frozen startup, missing helper and both server startup paths.
+- **Validation:** delivery 101/101 and inbox 29/29 passed with normal temporary-directory access; continuity documents, dependency check, demo PowerShell parsing and diff whitespace check passed. No GUI helper execution or compiled installer build in this follow-up.
+
+## 2026-10-02 — Inbox recovery readiness
+- **Symptom:** a historical rejection can be mistaken for an unresolved connection problem; successful retries erased their rejection evidence.
+- **Cause:** one rejection counter mixed readiness with audit retention, and accepted events deleted the matching rejection row.
+- **Fix:** retain rejection source/id records and add `unresolved_rejections` using accepted inbox identities. Synthetic HTTP tests retry the unchanged envelope after repairing consumer configuration, retain the rejection record and prove duplicate retry remains resolved. The existing payroll-target endpoint already exposes effective URL/key presence.
+- **Lesson:** readiness measures unresolved work; recovery should keep the evidence of the failure it resolved.
+
+
+## 2026-10-02 — Review repairs F01, F13, F14
+- **Symptom:** approved leave could be rewritten, New Year leave was charged entirely to its start year, and overtime policy was absent from backups.
+- **Cause:** approval permission guarded transitions only; balance SQL selected the start year; company policy lived in an unregistered JSON file.
+- **Fix:** preserve and harden the existing uncommitted repairs: freeze approved material fields including cancellation; allocate leave charges across working days by year, reduce proposed carryover before approval; back up settings.db and migrate legacy policy once (data version 6). Synthetic regressions cover fresh-folder recovery and legacy policy precedence. Repair the payroll-backup planted-bug anchor after adding the settings attachment. Delivery failure injection exposed an open settings connection blocking Windows rollback; explicitly close every short-lived settings connection.
+- **Validation:** people operations 72, payroll 66, security 78, delivery 96, workforce 53, inbox 25 passed; docs/environment passed; locked-engine equivalence zero differences; four relevant planted faults caught. Normal temporary-directory access was required by the sandbox. No browser, compiled installer, full 118-mutation rerun or real data validation.
+- **Lesson:** approval includes the exact approved facts; proposed prior-year charges affect next-year carryover; backup coverage must enumerate all calculation policy, and policy restoration must be tested on a fresh folder.
+
+
 Every change of phase, every bug and every discovery, **newest first**. An entry is never deleted or rewritten: a
 correction is a new entry. Each discovery has the shape **Symptom / Cause / Fix / Lesson** and describes what was
 observed, not what was intended (`TEST_DOCS_CURRENT.py` checks the shape and that the newest entry belongs to the

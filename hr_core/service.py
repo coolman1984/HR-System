@@ -15,7 +15,7 @@ from .device import Device
 from .journal import Journal
 from . import discipline, people_ops, scheduling, skills
 from .payroll import FILE as PAYROLL_FILE, PayrollMixin, PayrollStore
-from .people_service import READ as PEOPLE_READ, WRITE as PEOPLE_WRITE, PeopleOpsMixin
+from .people_service import READ as PEOPLE_READ, SETTINGS_FILE, WRITE as PEOPLE_WRITE, PeopleOpsMixin, SettingsStore
 from .registry import ENTITIES, Conflict, Registry, RegistryError
 
 WRITE_PERM = {"org_unit": "hr.org.write", "job": "hr.org.write", "position": "hr.org.write", "employee": "hr.employees.write",
@@ -50,11 +50,12 @@ class HRService(PeopleOpsMixin, PayrollMixin):
         self.journal = Journal(data_dir, self.device)
         self.registry = Registry(data_dir, company_id, company_code, company_name, journal=self.journal)
         self.auth = Auth(data_dir, self.journal)
+        self._settings = SettingsStore(data_dir)           # company settings (the overtime policy), a backup attachment
         self._load_policy()
         self._eco_inbox = None
         self._payroll_store = PayrollStore(data_dir)      # pay lives in its own database, copied into every backup as an attachment
         self.backups = Backups(data_dir, self.journal, self.registry, self.auth, backup_dir, extra_backup_dirs, keep,
-                               [*attachments, (PAYROLL_FILE, self._payroll_store.path, self._payroll_store.lock)])
+                               [*attachments, (PAYROLL_FILE, self._payroll_store.path, self._payroll_store.lock), (SETTINGS_FILE, self._settings.path, self._settings.lock)])
         self.journal.audit("system", "service.started", "system", {
             "device": self.device.device_id, "signing_backend": signing.BACKEND,
             "cloned_from": self.device.cloned_from, "journal_restored_from": restored_from})

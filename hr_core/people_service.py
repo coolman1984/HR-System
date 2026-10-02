@@ -11,6 +11,9 @@ Standard library only.
 
 import json
 import os
+import sqlite3
+import threading
+from contextlib import closing
 from datetime import date, timedelta
 
 from . import people_ops as ops
@@ -24,17 +27,48 @@ WRITE = {"headcount_plan": "hr.recruitment.write", "agency": "hr.recruitment.wri
          "onboarding_task": "hr.recruitment.write", "contract": "hr.recruitment.write", "overtime_request": "hr.overtime.write",
          "course": "hr.training.write", "training_session": "hr.training.write", "leave_type": "hr.leave.write", "leave_request": "hr.leave.write"}
 APPROVE = {"hire_requisition": "hr.recruitment.approve", "overtime_request": "hr.overtime.approve", "leave_request": "hr.leave.approve"}
-POLICY_FILE = "overtime_policy.json"
+POLICY_FILE = "overtime_policy.json"          # the old place of the policy: read once and moved into settings.db
+SETTINGS_FILE = "settings.db"
+
+
+class SettingsStore:
+    """The company's settings that are not records of the registry (today: the overtime policy), in `data/settings.db`. It is a backup attachment,
+    so a recovery on a fresh data folder brings the company's caps and premiums back (a missing file used to mean silent defaults)."""
+
+    def __init__(self, data_dir):
+        self.path = os.path.join(data_dir, SETTINGS_FILE)
+        self.lock = threading.RLock()
+        with self.lock, closing(sqlite3.connect(self.path)) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            db.commit()
+
+    def get(self, key):
+        with self.lock:
+            db = sqlite3.connect(self.path)
+            try:
+                row = db.execute("SELECT value FROM setting WHERE key = ?", (key,)).fetchone()
+            finally:
+                db.close()
+        return json.loads(row[0]) if row else None
+
+    def put(self, key, value):
+        with self.lock, closing(sqlite3.connect(self.path)) as db:
+            db.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, json.dumps(value, sort_keys=True)))
+            db.commit()
 
 
 class PeopleOpsMixin:
     # ------------------------------------------------------------------ settings
     def _load_policy(self):
-        try:
-            with open(os.path.join(self.data_dir, POLICY_FILE), encoding="utf-8") as fh:
-                self.registry.overtime_policy = json.load(fh)
-        except (FileNotFoundError, ValueError):
-            self.registry.overtime_policy = {}
+        stored = self._settings.get("overtime_policy")
+        if stored is None:                                      # an installation from before settings.db: move its file in
+            try:
+                with open(os.path.join(self.data_dir, POLICY_FILE), encoding="utf-8") as fh:
+                    stored = json.load(fh)
+                self._settings.put("overtime_policy", stored)
+            except (FileNotFoundError, ValueError):
+                stored = {}
+        self.registry.overtime_policy = stored
 
     def overtime_policy(self, user, ip=None):
         self.require(user, "hr.overtime.read", ip, "overtime.policy")
@@ -51,10 +85,7 @@ class PeopleOpsMixin:
             ops.check_policy(new)
         except ScheduleError as exc:
             raise RegistryError(exc.code, str(exc)) from None
-        path = os.path.join(self.data_dir, POLICY_FILE)
-        with open(path + ".tmp", "w", encoding="utf-8") as fh:
-            json.dump({k: new[k] for k in sorted(new)}, fh, indent=1)
-        os.replace(path + ".tmp", path)
+        self._settings.put("overtime_policy", {k: new[k] for k in sorted(new)})
         self.registry.overtime_policy = new
         self.journal.audit("security", "overtime.policy.changed", user["code"], {k: changes[k] for k in sorted(changes)}, ip)
         return new
@@ -110,7 +141,11 @@ class PeopleOpsMixin:
         elif entity == "leave_request":
             emp = self.registry.by_id("employee", fields.get("employee_id") or (cur or {}).get("employee_id"))
             first, last = fields.get("from_date") or (cur or {}).get("from_date"), fields.get("to_date") or (cur or {}).get("to_date")
-            if emp and first and last:
+            if cur and cur["status"] == "approved":
+                if any(k in fields and str(fields[k]) != str(cur.get(k)) for k in ("employee_id", "leave_type_id", "from_date", "to_date", "days")):
+                    raise RegistryError("leave.frozen", "approved leave does not change: cancel it and submit a new request")
+                fields["days"] = cur["days"]
+            elif emp and first and last:
                 fields["days"] = self.leave_days(emp["id"], first, last)
             if cur is None:
                 fields.update(status="requested", approver=None, decided_on=None)
@@ -296,8 +331,9 @@ class PeopleOpsMixin:
             if not lt.get("active", 1):
                 continue
             capped = lt.get("annual_days") not in (None, "", 0, "0")
-            used = sum(int(r["days"]) for r in self.registry.list("leave_request") if r["employee_id"] == emp["id"] and r["leave_type_id"] == lt["id"]
-                       and r["status"] == "approved" and str(r["from_date"])[:4] == str(year))
+            used = sum(ops.days_in_year(self.registry, emp["id"], date.fromisoformat(r["from_date"]), date.fromisoformat(r["to_date"]), int(r["days"]), int(year))
+                       for r in self.registry.list("leave_request") if r["employee_id"] == emp["id"] and r["leave_type_id"] == lt["id"]
+                       and r["status"] == "approved" and str(r["from_date"])[:4] <= str(year) <= str(r["to_date"])[:4])
             out.append({"leave_type": lt["code"], "name": lt["name"], "entitlement": int(lt["annual_days"]) if capped else None, "used": used,
                         "left": ops.leave_balance(self.registry, emp["id"], lt, int(year)) if capped else None})
         return {"employee": employee_code, "year": int(year), "balances": out}

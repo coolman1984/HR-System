@@ -108,11 +108,19 @@ def _m5_payroll_rights(svc):
                             [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
 
 
+def _m6_overtime_settings(svc):
+    """Data version 6: preserve legacy overtime policy in backed-up company settings; safe to resume."""
+    svc._load_policy()
+    if svc._settings.get("overtime_policy") is None:
+        svc._settings.put("overtime_policy", svc.registry.overtime_policy)
+
+
 MIGRATIONS = [(1,"built-in profiles gain the attendance and settings rights", _m1_attendance_rights),
               (2, "shifts and skills: built-in profiles gain their rights", _m2_shift_and_skill_rights),
               (3, "discipline: built-in profiles gain the rights of the penalty schedule", _m3_discipline_rights),
               (4, "recruitment, overtime, training and leave: built-in profiles gain their rights", _m4_people_ops_rights),
-              (5, "payroll: built-in profiles gain their rights", _m5_payroll_rights)]
+              (5, "payroll: built-in profiles gain their rights", _m5_payroll_rights),
+              (6, "overtime policy: backed-up company settings", _m6_overtime_settings)]
 assert [n for n, _, _ in MIGRATIONS] == list(range(1, DATA_VERSION + 1)), "one migration per data version"
 
 

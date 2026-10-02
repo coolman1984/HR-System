@@ -550,6 +550,31 @@ r = subprocess.run([sys.executable, str(ROOT / "hr_main.py"), "tool", "data-vers
                    capture_output=True, timeout=120)
 check("the_entry_point_has_maintenance_tools", r.returncode == 0 and json.loads(r.stdout)["data_version"] == upgrade.DATA_VERSION, r.stderr[-300:])
 
+# Browser startup is verified without executing the GUI helper.
+import hr_main
+from unittest.mock import patch
+from types import SimpleNamespace
+
+with patch.object(hr_main.os.path, "isfile", return_value=True), patch.object(hr_main.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as launch:
+    check("source_startup_uses_only_the_mandatory_chrome_helper", hr_main._open_chrome("http://127.0.0.1:8790/")
+          and launch.call_args.args[0][0] == sys.executable
+          and launch.call_args.args[0][1].endswith("windows-chrome-launcher\\scripts\\open_chrome.py"))
+with patch.object(hr_main.os.path, "isfile", return_value=True), patch.object(hr_main.sys, "frozen", True, create=True), \
+        patch.object(hr_main.shutil, "which", side_effect=lambda name: "C:/Python/python.exe" if name == "python" else None), \
+        patch.object(hr_main.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as launch:
+    check("frozen_startup_uses_a_child_python_not_the_product_exe", hr_main._open_chrome("http://127.0.0.1:8790/")
+          and launch.call_args.args[0][0] == "C:/Python/python.exe")
+with patch.object(hr_main.os.path, "isfile", return_value=False), patch.object(hr_main.subprocess, "run") as launch, patch("builtins.print") as printed:
+    check("missing_chrome_helper_reports_the_url_without_opening_a_handler", hr_main._open_chrome("http://127.0.0.1:8790/") is False
+          and not launch.called and "http://127.0.0.1:8790/" in printed.call_args.args[0])
+with patch.object(hr_main, "_running", return_value=True), patch.object(hr_main, "_open_chrome") as launch, patch("hr_core.home.Home", return_value=hm):
+    check("no_browser_on_a_second_start_never_opens_chrome", hr_main.main(["--no-browser"]) == 0 and not launch.called)
+fake_server = SimpleNamespace(serve_forever=lambda: None, server_close=lambda: None)
+fake_product = SimpleNamespace(error=None, serve=lambda **kw: fake_server, close=lambda: None)
+with patch.object(hr_main, "_running", return_value=False), patch.object(hr_main, "_open_chrome") as launch, \
+        patch("hr_core.home.Home", return_value=hm), patch("hr_core.app.Product", return_value=fake_product):
+    check("no_browser_starts_the_server_even_when_windows_autostart_is_off", hr_main.main(["--no-browser"]) == 0 and not launch.called)
+
 # ================================================================== 6. the screens and their two languages
 en = json.load(open(ROOT / "hr_core/web/i18n/en.json", encoding="utf-8"))
 ar = json.load(open(ROOT / "hr_core/web/i18n/ar.json", encoding="utf-8"))

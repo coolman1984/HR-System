@@ -288,6 +288,8 @@ def _check_leave(reg, row, cur, today):
         raise ScheduleError("leave.days", "more leave days than days between the dates")
     if cur is None and row["status"] != "requested":
         raise ScheduleError("leave.new_status", "a leave request starts as requested; someone else approves it")
+    if cur and cur["status"] == "approved" and any(str(cur.get(k)) != str(row.get(k)) for k in ("employee_id", "leave_type_id", "from_date", "to_date", "days")):
+        raise ScheduleError("leave.frozen", "approved leave does not change (person, type, dates, days): cancel it and enter a new request, which someone else approves")
     if cur and cur["status"] in ("approved", "rejected", "cancelled") and cur["status"] != row["status"] and not (cur["status"] == "approved" and row["status"] == "cancelled"):
         raise ScheduleError("leave.decided", f"a {cur['status']} leave request cannot become {row['status']}")
     clash = reg.db.execute("SELECT code FROM leave_request WHERE employee_id = ? AND deleted = 0 AND status IN ('requested', 'approved') AND from_date <= ? AND to_date >= ? AND id != ?",
@@ -295,22 +297,65 @@ def _check_leave(reg, row, cur, today):
     if clash and row["status"] in ("requested", "approved"):
         raise ScheduleError("leave.overlap", f"{emp['code']} already has leave {clash[0]} on those days")
     if row["status"] == "approved" and (cur is None or cur["status"] != "approved") and ltype.get("annual_days") not in (None, "", 0, "0"):
-        left = leave_balance(reg, emp["id"], ltype, first.year)
-        if days > left:
-            raise ScheduleError("leave.insufficient", f"{emp['code']} has {left} day(s) of {ltype['code']} left in {first.year} and asks for {days}")
+        for year in range(first.year, last.year + 1):          # a request over New Year is charged to each year for the days that fall in it
+            asked = days_in_year(reg, emp["id"], first, last, days, year)
+            left = leave_balance(reg, emp["id"], ltype, year, exclude=cur["id"] if cur else None)
+            # The proposed request also reduces the previous year's unused entitlement.
+            if year > first.year and int(ltype.get("carry_over_days") or 0) and emp.get("hire_date") and str(emp["hire_date"]) < f"{year}-01-01":
+                entitlement = int(ltype["annual_days"])
+                previous_left = leave_balance(reg, emp["id"], dict(ltype, carry_over_days=0), year - 1, exclude=cur["id"] if cur else None)
+                cap = int(ltype["carry_over_days"])
+                previous_asked = days_in_year(reg, emp["id"], first, last, days, year - 1)
+                left -= min(max(0, previous_left), cap) - min(max(0, previous_left - previous_asked), cap)
+            if asked > left:
+                raise ScheduleError("leave.insufficient", f"{emp['code']} has {left} day(s) of {ltype['code']} left in {year} and asks for {asked}")
 
 
 # ---------------------------------------------------------------------- figures
-def leave_balance(reg, employee_id, ltype, year):
+def days_in_year(reg, employee_id, first, last, days, year):
+    """The working days of a leave (first..last, `days` in all) that fall in `year`: the person's own rest days and holidays do not count, and an
+    unscheduled day does (as in `leave_days`). Whole-year requests answer `days`; the parts of a request over New Year add up to `days`."""
+    if first.year == last.year:
+        return int(days) if first.year == year else 0
+    plan = Schedule(reg)
+    plan.leaves = {}                                            # the leave itself must not hide its own days
+    counts = {}
+    d = first
+    while d <= last:
+        if plan.day(employee_id, d.isoformat())["status"] not in ("rest", "holiday"):
+            counts[d.year] = counts.get(d.year, 0) + 1
+        d += timedelta(days=1)
+    total = sum(counts.values())
+    if total == int(days):
+        return counts.get(year, 0)
+    if not total:  # Legacy/manual requests on only rest days still have a recorded day charge.
+        d = first
+        while d <= last:
+            counts[d.year] = counts.get(d.year, 0) + 1
+            d += timedelta(days=1)
+        total = sum(counts.values())
+    ys = sorted(counts)                                         # days typed by hand: shared in proportion, the remainder to the last year
+    shares = {y: int(days) * counts[y] // max(1, total) for y in ys}
+    shares[ys[-1]] += int(days) - sum(shares.values())
+    return shares.get(year, 0)
+
+
+def leave_balance(reg, employee_id, ltype, year, exclude=None):
     """Days of a capped leave type left in `year`: the yearly entitlement, plus the unused days of the year before up to
-    the carry-over limit, minus the approved days of the year. A type without an entitlement has no balance (uncapped)."""
+    the carry-over limit, minus the approved days of the year (a request over New Year counts in each year for its own days).
+    A type without an entitlement has no balance (uncapped)."""
     entitlement = int(ltype.get("annual_days") or 0)
     carry_cap = int(ltype.get("carry_over_days") or 0)
 
     def used(y):
-        return sum(int(r[0]) for r in reg.db.execute(
-            "SELECT days FROM leave_request WHERE employee_id = ? AND leave_type_id = ? AND deleted = 0 AND status = 'approved' AND substr(from_date, 1, 4) = ?",
-            (employee_id, ltype["id"], str(y))))
+        total = 0
+        for r in reg.db.execute(
+                "SELECT from_date, to_date, days, id FROM leave_request WHERE employee_id = ? AND leave_type_id = ? AND deleted = 0 AND status = 'approved' "
+                "AND substr(from_date, 1, 4) <= ? AND substr(to_date, 1, 4) >= ?", (employee_id, ltype["id"], str(y), str(y))):
+            if exclude is not None and r[3] == exclude:
+                continue
+            total += days_in_year(reg, employee_id, _d(r[0], "the first day"), _d(r[1], "the last day"), int(r[2]), y)
+        return total
     emp = reg.by_id("employee", employee_id)
     # unused days carry over only for someone already employed the year before (no hire date on record: no carry-over)
     employed_before = bool(emp and emp.get("hire_date") and str(emp["hire_date"]) < f"{year}-01-01")

@@ -74,3 +74,9 @@ to the registry.
 - The attendance audit line is written just after the engine's answer: a test waits for it (`attendance_events()`).
 - A secret (the GMES key) is never a setting; the API says only `key_set`.
 - More: `docs/LESSONS.md`.
+
+## Review repairs (2026-10-02)
+- `people_ops.days_in_year` splits cross-year leave charges; approval also subtracts proposed previous-year use from carryover. Approved material fields stay frozen even during cancellation.
+- `people_service.SettingsStore` holds overtime policy in `data/settings.db`; `hr_core/service.py` registers it as a backup attachment beside data/payroll.db. Data version 6 migrates legacy JSON once. Restore attachments into a fresh folder for disaster recovery; the registry restore command does not restore attachments.
+- Inbox recovery: `hr_core/eco_inbox.py` status exposes historical `rejected` and additive `unresolved_rejections`; accepted source/event_id pairs resolve the latter without deleting evidence. Payroll target readiness can read the existing API URL/key-set fields.
+- Chrome startup: `hr_main._open_chrome` calls `D:\WORK\Software Development\GitHub\AI CREW\Mandatory To Use Skills\windows-chrome-launcher\scripts\open_chrome.py`, falling back to `%USERPROFILE%\.codex\skills\windows-chrome-launcher\scripts\open_chrome.py`. Source uses `sys.executable`; frozen startup resolves Python/py on PATH. No default-handler fallback: print URL if unavailable. `Start-HR-Demo.bat -NoBrowser` (or `--background`) → `tools/start_demo.ps1 -NoBrowser` → `hr_main.py --no-browser`; synthetic startup tests mock GUI calls in `TEST_HR_DELIVERY.py`.

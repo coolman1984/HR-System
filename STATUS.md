@@ -1,4 +1,7 @@
 # STATUS — where HR-System stands
+
+Review repairs (2026-10-02): F01 freezes approved leave material fields, including when cancelling; cancel and submit a new request for revised dates. F13 charges cross-year working days to each year and includes the proposed prior-year charge when checking carryover. F14 stores overtime policy in backed-up `data/settings.db`, importing legacy JSON once; data version 6 provides the resumable upgrade. Validation: people operations 72, payroll 66, security 78, delivery 96, workforce 53 and inbox 25 checks passed; docs/environment checks passed, locked-engine equivalence had zero differences, and all four focused leave/settings/payroll backup planted faults were caught. The full 119-mutation run and fresh compiled installer acceptance were not rerun. Backups contain settings/payroll attachments for fresh-folder recovery; the compensating registry restore command still restores registry rows only. No real salary data or statutory validation was performed.
+
 | `clock` (simulation, 2026-09-30) - one helper gives every "today" in `hr_core`; with `HR_SIMULATION=1` an administrator can move it (`GET/PUT /api/sim/today`, audited); without the switch the route does not exist, so an installed program can never be back-dated | `hr_core/clock.py`, `hr_core/registry.py`, `hr_core/api.py` | `TEST_HR_SIMULATION.py` (9), two planted bugs in `migration/mutations.py` |
 | `eco_signing` (WP-X2, 2026-09-30) - a machine call may be signed (HMAC-SHA256 over method, path, body and time, five-minute window, keyed with the SHA-256 of the machine key); HR's publisher signs, the inbox checks, `ECO_REQUIRE_SIGNATURE=1` makes it mandatory; the same algorithm and test vector as Mizan and GMES | `eco_signing.py`, `hr_core/eco_inbox.py`, `hr_core/api.py`, `eco_publisher.py` | `TEST_HR_ECO_INBOX.py`, `TEST_ECO_PUBLISHER.py`, three planted bugs |
 python TEST_HR_SIMULATION.py         the simulated date: movable only with HR_SIMULATION=1, every rule follows it
@@ -263,5 +266,9 @@ route: PUT /api/admin/settings
 route: GET /api/admin/integration
 route: PUT /api/admin/integration
 route: POST /api/admin/integration/run
-mutations: 115
+mutations: 119
 ```
+
+Integration recovery (2026-10-02): inbox status retains historical `rejected` source/id records and adds `unresolved_rejections`, excluding source/id pairs already accepted into the inbox. Successful retry no longer erases rejection evidence. GET /api/payroll/target already reports the effective URL and whether its key is set (never the key); an empty target remains supported for standalone HR.
+
+Chrome startup (2026-10-02, built and tested): `hr_main.py` calls only the mandatory interactive-desktop Chrome helper, or prints the URL when unavailable. Source/frozen interpreter selection and missing-helper handling are checked with mocks; no GUI execution in those checks. `Start-HR-Demo.bat -NoBrowser` or `--background` forwards `--no-browser`, independently of the autostart preference.

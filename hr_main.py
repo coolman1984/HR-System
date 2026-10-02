@@ -3,6 +3,7 @@
   HR-System.exe                 start the server and open it in the browser
   HR-System.exe --background    start without opening the browser (Windows start-up); does nothing when the setting
                                 "start with Windows" is off
+  HR-System.exe --no-browser    start without opening Chrome, regardless of the Windows start-up setting
   HR-System.exe tool <command>  maintenance from a command window: status, backup, backups, rehearse <name>, health,
                                 data-version, recovery
 
@@ -13,11 +14,12 @@ Standard library only.
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import threading
 import time
 import urllib.request
-import webbrowser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -33,6 +35,33 @@ def _running(port):
             return json.load(r).get("product") == "HR-System"
     except Exception:
         return False
+
+
+def _open_chrome(url):
+    """Use the owner's interactive-desktop helper; never a default browser handler."""
+    launchers = (
+        r"D:\WORK\Software Development\GitHub\AI CREW\Mandatory To Use Skills\windows-chrome-launcher\scripts\open_chrome.py",
+        os.path.join(os.environ.get("USERPROFILE", os.path.expanduser("~")), ".codex", "skills",
+                     "windows-chrome-launcher", "scripts", "open_chrome.py"),
+    )
+    launcher = next((path for path in launchers if os.path.isfile(path)), None)
+    # A frozen executable is HR-System.exe, not a Python interpreter.
+    if getattr(sys, "frozen", False):
+        python = shutil.which("python")
+        py_launcher = shutil.which("py") if not python else None
+        command = [python] if python else ([py_launcher, "-3"] if py_launcher else [])
+    else:
+        command = [sys.executable] if sys.executable else []
+    if launcher and command:
+        try:
+            result = subprocess.run(command + [launcher, url], timeout=20, check=False,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode == 0:
+                return True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    print(f"Open this URL in Google Chrome: {url} (Chrome launcher unavailable)", flush=True)
+    return False
 
 
 def tool(home, argv):
@@ -83,19 +112,20 @@ def main(argv):
         return tool(home, argv[1:])
     cfg = home.config()
     background = "--background" in argv
+    no_browser = background or "--no-browser" in argv
     if background and not cfg.get("autostart", True):
         return 0  # the person switched "start with Windows" off in the settings
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else int(cfg["port"])
     url = f"http://127.0.0.1:{port}/"
     if _running(port):
-        if not background:
-            webbrowser.open(url)
+        if not no_browser:
+            _open_chrome(url)
         return 0
     product = Product(home)
     server = product.serve(port=port)
     print(f"HR-System {url} (data: {home.path})" + (f"\nNOT READY: {product.error['message']}" if product.error else ""), flush=True)
-    if not background:
-        threading.Thread(target=lambda: (time.sleep(0.8), webbrowser.open(url)), daemon=True).start()
+    if not no_browser:
+        threading.Thread(target=lambda: (time.sleep(0.8), _open_chrome(url)), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

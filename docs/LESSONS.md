@@ -105,3 +105,12 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L50** Guards that read code with a regular expression stop guarding when the code style changes; read it with `ast` (the route inventory missed raw strings and `ENTITY_ROUTE`).
 
 - **Test hooks must be absent in production (2026-09-30).** The simulated date exists only when the process starts with HR_SIMULATION=1; the route is not registered otherwise.
+
+## 2026-10-02 — review repairs
+- Approved leave freezes employee, type, dates and days, including the cancellation operation; revised facts require a new request and a new approver.
+- A cross-year request charges each year for its days, and its proposed prior-year charge reduces available carryover before approval.
+- Company overtime policy is business backup data. Verify it on a fresh folder; never let a stale legacy JSON file overwrite restored settings.
+- Registry compensating restore and fresh-machine attachment recovery have different scopes; name the scope honestly.
+- A SQLite connection context commits or rolls back but does not close the connection. Explicit closure is required for Windows upgrade rollback to replace attachment files.
+- Readiness counters count unresolved source/event identities; successful retries retain rejection evidence, and historical rejection counts must not block readiness forever.
+- On this machine browser startup must call the interactive-desktop Chrome launcher helper. A frozen HR executable cannot run Python scripts itself; missing Python/helper means print the URL. Demo `-NoBrowser` uses `--no-browser`, distinct from the autostart-sensitive `--background` product flag.
