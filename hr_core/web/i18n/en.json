@@ -1099,6 +1099,8 @@
  "setup.company_name": "Company name",
  "setup.done": "HR-System is ready. Sign in as the administrator.",
  "setup.install": "Set up",
+ "setup.skip": "Development stage: Skip",
+ "setup.skip_busy": "Building the demo company with its data (about 30 seconds)...",
  "setup.intro": "Two short steps. Nothing is written until both are valid.",
  "setup.local_only": "Set up HR-System on the server computer itself.",
  "setup.source": "Where does the company identity come from?",

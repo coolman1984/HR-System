@@ -36,32 +36,32 @@ class UpgradeError(Exception):
 
 
 # ---------------------------------------------------------------------- steps
+def _gain_rights(svc, version, added_by_profile):
+    """The built-in profiles gain the rights added in `version`; a customised profile keeps what it had and only gains.
+    The administrator profile always holds every right the program knows (the profile check refuses anything else), so it jumps to all of them
+    at once: an installation several versions behind would otherwise fail on the first step, when later rights are still missing."""
+    from .auth import PERMISSIONS
+    for code, added in sorted(added_by_profile.items()):
+        cur = svc.auth._get("profile", code)
+        if not cur or cur["deleted"]:
+            continue
+        want = sorted(PERMISSIONS) if code == "administrator" else sorted(set(cur["perms"] or []) | set(added))
+        if want != sorted(cur["perms"] or []):
+            svc.auth.commit("upgrade", f"Data version {version}: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
+                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+
 def _m1_attendance_rights(svc):
     """Data version 1: the built-in profiles of an older installation gain the rights added with the attendance
     screens and the settings (a customised profile keeps what it had and only gains)."""
     from .auth import ADDED_IN_DATA_VERSION_1
-    for code, added in sorted(ADDED_IN_DATA_VERSION_1.items()):
-        cur = svc.auth._get("profile", code)
-        if not cur or cur["deleted"]:
-            continue
-        want = sorted(set(cur["perms"] or []) | set(added))
-        if want != sorted(cur["perms"] or []):
-            svc.auth.commit("upgrade", f"Data version 1: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
-                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+    _gain_rights(svc, 1, ADDED_IN_DATA_VERSION_1)
 
 
 def _m2_shift_and_skill_rights(svc):
     """Data version 2: the tables of shifts and skills exist (the registry creates empty ones on open); the built-in
     profiles gain the rights to see and plan them. A customised profile keeps what it had and only gains."""
     from .auth import ADDED_IN_DATA_VERSION_2
-    for code, added in sorted(ADDED_IN_DATA_VERSION_2.items()):
-        cur = svc.auth._get("profile", code)
-        if not cur or cur["deleted"]:
-            continue
-        want = sorted(set(cur["perms"] or []) | set(added))
-        if want != sorted(cur["perms"] or []):
-            svc.auth.commit("upgrade", f"Data version 2: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
-                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+    _gain_rights(svc, 2, ADDED_IN_DATA_VERSION_2)
 
 
 def _m3_discipline_rights(svc):
@@ -69,14 +69,7 @@ def _m3_discipline_rights(svc):
     open); the built-in profiles gain the rights to see, propose and (administrator) decide. Deciding stays apart from
     proposing for the HR officer (separation of duties). A customised profile keeps what it had and only gains."""
     from .auth import ADDED_IN_DATA_VERSION_3
-    for code, added in sorted(ADDED_IN_DATA_VERSION_3.items()):
-        cur = svc.auth._get("profile", code)
-        if not cur or cur["deleted"]:
-            continue
-        want = sorted(set(cur["perms"] or []) | set(added))
-        if want != sorted(cur["perms"] or []):
-            svc.auth.commit("upgrade", f"Data version 3: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
-                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+    _gain_rights(svc, 3, ADDED_IN_DATA_VERSION_3)
 
 
 def _m4_people_ops_rights(svc):
@@ -84,28 +77,14 @@ def _m4_people_ops_rights(svc):
     profiles gain their rights. Approving stays apart from asking for the HR officer (separation of duties). A customised profile keeps what
     it had and only gains."""
     from .auth import ADDED_IN_DATA_VERSION_4
-    for code, added in sorted(ADDED_IN_DATA_VERSION_4.items()):
-        cur = svc.auth._get("profile", code)
-        if not cur or cur["deleted"]:
-            continue
-        want = sorted(set(cur["perms"] or []) | set(added))
-        if want != sorted(cur["perms"] or []):
-            svc.auth.commit("upgrade", f"Data version 4: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
-                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+    _gain_rights(svc, 4, ADDED_IN_DATA_VERSION_4)
 
 
 def _m5_payroll_rights(svc):
     """Data version 5: payroll (data/payroll.db is created empty on open); the built-in profiles gain their rights. Approving stays
     apart from calculating for the HR officer (separation of duties). A customised profile keeps what it had and only gains."""
     from .auth import ADDED_IN_DATA_VERSION_5
-    for code, added in sorted(ADDED_IN_DATA_VERSION_5.items()):
-        cur = svc.auth._get("profile", code)
-        if not cur or cur["deleted"]:
-            continue
-        want = sorted(set(cur["perms"] or []) | set(added))
-        if want != sorted(cur["perms"] or []):
-            svc.auth.commit("upgrade", f"Data version 5: profile {code} gains {', '.join(sorted(set(want) - set(cur['perms'] or [])))}",
-                            [{"entity": "profile", "code": code, "fields": {"perms": want}, "expected_ver": cur["ver"]}])
+    _gain_rights(svc, 5, ADDED_IN_DATA_VERSION_5)
 
 
 def _m6_overtime_settings(svc):

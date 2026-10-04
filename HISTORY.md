@@ -1,5 +1,11 @@
 # HISTORY
 
+## 2026-10-04 - An older demo could not be updated; a presentation start with a Skip button
+- **Symptom:** the demo folder (data version 3) answered 'the administrator profile always holds every right' and refused to open.
+- **Cause:** the update steps gave the administrator only the rights added in each version; after step 4 the profile did not yet hold the payroll rights the profile check requires, so step 4 failed.
+- **Fix:** one helper (upgrade._gain_rights) gives the administrator every right the program knows at the first step; other built-in profiles still gain only their own. Added Start-HR-Presentation.bat: an empty installation (HR_DEMO_SKIP=1) whose set-up screen has a Development stage: Skip button that builds the demo company and enters it (admin / 123); refused on any installation that already has a company.
+- **Lesson:** a step-by-step update must leave every intermediate state valid under the current rules.
+
 ## 2026-10-02 — Chrome-only startup and unattended demo
 - **Symptom:** installed/source startup used the default browser handler, and the demo launcher could not suppress browser opening.
 - **Cause:** `hr_main.py` called `webbrowser.open`; the demo PowerShell script accepted no browser suppression flag.

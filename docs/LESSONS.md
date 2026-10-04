@@ -104,6 +104,8 @@ or from the owner. Add a line when something surprises you; never delete one, st
 - **L49** A planted bug that survives is either a missing test or a change that alters nothing; find out which before adding a check.
 - **L50** Guards that read code with a regular expression stop guarding when the code style changes; read it with `ast` (the route inventory missed raw strings and `ENTITY_ROUTE`).
 
+- **L51** A position is one seat: the demo company once put eight sorters on one position and the Advisor rightly reported 143 people sharing a position. Sample data follows the model's rules too (one seat per person).
+- **L52** A screen that asks for a month opens on the last month that is over, not on the one that has just begun (it shows nothing for the first days): overtime figures, pay adjustments, and the planned-versus-attended page runs its first inquiry on open when its period is already filled in (2026-10-02, found by walking every screen of the showreel).
 - **Test hooks must be absent in production (2026-09-30).** The simulated date exists only when the process starts with HR_SIMULATION=1; the route is not registered otherwise.
 
 ## 2026-10-02 — review repairs

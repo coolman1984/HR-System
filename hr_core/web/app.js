@@ -121,6 +121,19 @@ function showSetup() {
     step(2, t("setup.admin"), t("setup.admin_help"), ui.field(t("user.username"), user, { required: true }), ui.field(t("user.display_name"), dname),
       h("div", { class: "eco-span-2" }, ui.field(t("user.password"), pw, { required: true, hint: t("user.password_rule") }))),
     out, submit);
+  if (S.info.demo_skip) {   // a presentation start only (HR_DEMO_SKIP=1 on an empty installation): straight into the demo company, sign in admin / 123
+    const skip = ui.button({ label: t("setup.skip"), icon: "arrow-right", size: "lg", type: "button", cls: "hr-wide" });
+    skip.addEventListener("click", async () => {
+      skip.disabled = submit.disabled = true;
+      ui.clear(out, ui.banner("info", t("setup.skip_busy")));
+      try {
+        await api("POST", "/api/setup/skip", {});
+        S.info = await (await fetch("/api/info")).json();
+        showLogin("");
+      } catch (e) { ui.clear(out, ui.banner("bad", e.message)); skip.disabled = submit.disabled = false; }
+    });
+    form.append(skip);
+  }
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     submit.disabled = true;
@@ -229,6 +242,8 @@ const AUTO_CODE = {
   violation: (v, R) => { const e = R.byId.get(v.employee_id), k = R.byId.get(v.rule_id); return e && k && v.work_date ? e.code + "-" + v.work_date + "-" + k.code : ""; },
 };
 const localToday = () => ui.isoDate(new Date());
+/** The month payroll works on: the last month that is over (the current one has only just begun, so it shows nothing yet). */
+const lastMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return ui.isoDate(d).slice(0, 7); };
 async function editRecord(entity, row, preset = {}) {
   const R = await refs();
   const inputs = {};
@@ -902,6 +917,7 @@ function compareScreen({ shell }) {
       sc.result({ chips: conds.chips(), ms: Math.round(performance.now() - t0) });
     } catch (e) { g.setError(e.message); }
   }
+  load();   // opens on this week's comparison: the period is already filled in
   return { el: sc.el };
 }
 
@@ -1856,7 +1872,7 @@ const overtimeScreen = registerScreen("overtime_request", "OVT1010", "nav.overti
   actions: [changeAction("overtime_request", { status: "approved" }, "act.approve", "check", "hr.overtime.approve", (r) => r.status === "requested", "primary"),
     changeAction("overtime_request", { status: "rejected" }, "act.reject", "x", "hr.overtime.approve", (r) => r.status === "requested")] });
 function overtimeFiguresScreen({ shell }) {
-  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: localToday().slice(0, 7) }], { key: "OVT1020", onSubmit: () => load() });
+  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: lastMonth() }], { key: "OVT1020", onSubmit: () => load() });
   const g = ui.grid([
     { key: "employee", label: t("field.employee_id"), type: "code", width: 110, frozen: true, total: "count" },
     ...["day", "night", "rest_day", "holiday"].map((k) => ({ key: k, label: t("ot." + k), type: "number", width: 100, total: "sum", value: (r) => r.minutes[k] })),
@@ -1871,7 +1887,7 @@ function overtimeFiguresScreen({ shell }) {
   async function load() {
     g.setLoading();
     try {
-      const r = await api("GET", "/api/overtime/figures?period=" + encodeURIComponent(conds.values().period || localToday().slice(0, 7)));
+      const r = await api("GET", "/api/overtime/figures?period=" + encodeURIComponent(conds.values().period || lastMonth()));
       g.setRows(r.employees);
       ui.clear(notes, ui.banner("info", r.policy.source_note), r.exceptions.length ? ui.banner("warn", t("ovt.exceptions", { n: r.exceptions.length }) + ": " + r.exceptions.map((x) => `${x.employee} ${x.date} (${x.minutes})`).join(" · ")) : null);
       sc.result({ chips: conds.chips() });
@@ -1933,7 +1949,7 @@ function payProfilesScreen({ shell }) {
   return { el: sc.el };
 }
 function payAdjustmentsScreen({ shell }) {
-  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: localToday().slice(0, 7) }], { key: "PAY1020", onSubmit: () => load() });
+  const conds = ui.conditionPanel([{ key: "period", label: t("field.period"), placeholder: "YYYY-MM", dir: "ltr", default: lastMonth() }], { key: "PAY1020", onSubmit: () => load() });
   const g = ui.grid([
     { key: "employee_code", label: t("field.employee_id"), type: "code", width: 110, frozen: true, total: "count" }, { key: "kind", label: t("field.kind"), width: 190, value: (r) => t("pay.kind." + r.kind) },
     { key: "amount", label: t("pay.value"), type: "number", digits: 2, width: 130, value: (r) => (r.kind === "unpaid_absence_days" ? r.value : pounds(r.value)) },
@@ -1943,7 +1959,7 @@ function payAdjustmentsScreen({ shell }) {
   const add = ui.button({ label: t("pay.new_adjustment"), icon: "plus", kind: "primary", disabled: !can("hr.payroll.write"), onClick: () => dialog() });
   const sc = screen({ code: "PAY1020", title: t("nav.pay_adjustments"), path: [t("g.payroll")], shell, toolbar: [add, del],
     standard: { inquiry: () => load(), inquiryLabel: t("refresh"), inquiryIcon: "refresh", export: () => g.exportCSV("pay-adjustments"), exportLabel: t("export"), columns: () => g.columnsDialog() }, conditions: conds, grid: g });
-  const period = () => conds.values().period || localToday().slice(0, 7);
+  const period = () => conds.values().period || lastMonth();
   async function load() {
     g.setLoading();
     try { g.setRows(await api("GET", "/api/payroll/adjustments?period=" + encodeURIComponent(period()))); sc.result({ chips: conds.chips() }); } catch (e) { g.setError(e.message); }

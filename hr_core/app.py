@@ -96,13 +96,52 @@ class Product:
                 from .api import make_handler
                 self.server.RequestHandlerClass = make_handler(self.service, self)
 
+    def demo_skip_allowed(self):
+        """The "development stage: skip" button exists only on an empty installation started for a presentation (HR_DEMO_SKIP=1)."""
+        return os.environ.get("HR_DEMO_SKIP") == "1" and not self.home.company() and self.service is None and self.error is None
+
+    def skip_to_demo(self, ip=None):
+        """Presentation only: builds the demo company (tools/make_demo.py: synthetic people, attendance, leave, overtime, payroll set-up) beside this
+        empty installation, moves it in and opens it, so the audience goes from the set-up screen straight into a working application
+        (sign in: admin / 123). Refused on any installation that already belongs to a company."""
+        import shutil
+        import subprocess
+        import sys
+        from .home import Home
+        with self.lock:
+            if not self.demo_skip_allowed():
+                raise HomeError("setup.skip_refused", "skipping the set-up is only offered on an empty installation started for a presentation")
+            repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            build = self.home.path + ".demo-build"
+            shutil.rmtree(build, ignore_errors=True)
+            env = {**os.environ, "OPENBLAS_NUM_THREADS": "1"}
+            env.pop("HR_DEMO_SKIP", None)
+            done = subprocess.run([sys.executable, os.path.join(repo, "tools", "make_demo.py"), build], cwd=repo, env=env, capture_output=True, text=True, timeout=600)
+            if done.returncode != 0:
+                shutil.rmtree(build, ignore_errors=True)
+                raise HomeError("setup.skip_failed", "the demo company could not be built: " + (done.stderr or done.stdout)[-300:])
+            for name in os.listdir(build):
+                target = os.path.join(self.home.path, name)
+                if os.path.isdir(target):
+                    shutil.rmtree(target)
+                elif os.path.exists(target):
+                    os.remove(target)
+                shutil.move(os.path.join(build, name), target)
+            shutil.rmtree(build, ignore_errors=True)
+            self.home = Home(self.home.path)
+            self.attendance = Attendance(self.home.data)
+            self.open()
+            if self.server is not None:
+                from .api import make_handler
+                self.server.RequestHandlerClass = make_handler(self.service, self)
+
     # ------------------------------------------------------------------ information
     def info(self, local=False):
         """Public: what the sign-in page needs (no personal data, no secrets)."""
         company = self.home.company() or {}
         cfg = self.home.config()
         users = self.service.auth.has_users() if self.service else False
-        return {"product": PRODUCT, "version": VERSION, "setup_needed": not (company and users), "local": bool(local),
+        return {"product": PRODUCT, "version": VERSION, "setup_needed": not (company and users), "local": bool(local), "demo_skip": bool(local and self.demo_skip_allowed()),
                 "error": self.error,
                 "language": cfg.get("language", "en"),
                 "company": {k: company.get(k) for k in ("code", "name", "source", "provisional")} if company else None}

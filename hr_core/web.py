@@ -112,6 +112,17 @@ def make_setup_handler(product):
 
         def do_POST(self):
             path = urlparse(self.path).path
+            if path == "/api/setup/skip":
+                if self.client_address[0] not in LOCAL:
+                    return self._json(403, {"error": "setup.local_only", "message": "set up HR-System on the server machine itself"})
+                origin = self.headers.get("Origin")
+                if origin and urlparse(origin).netloc != self.headers.get("Host"):
+                    return self._json(403, {"error": "origin.refused", "message": "cross-site request refused"})
+                try:
+                    product.skip_to_demo(self.client_address[0])
+                except Exception as exc:
+                    return self._json(400, {"error": getattr(exc, "code", "setup.skip_failed"), "message": str(exc)})
+                return self._json(201, {"ok": True})
             if path != "/api/setup/install":
                 return self._json(503, {"error": "setup.required", "message": "this installation is not set up yet"})
             if self.client_address[0] not in LOCAL:
